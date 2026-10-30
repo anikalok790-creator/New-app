@@ -28,7 +28,7 @@ HISTORY_FILE = pathlib.Path("history.json")
 tasks = {}
 download_history = []
 history_lock = threading.Lock()
-cancel_flags = {} # ডাউনলোড বাতিল ট্র্যাক করার জন্য
+cancel_flags = {}
 
 AUDIO_EXTS = {'.m4a', '.mp3', '.webm', '.opus', '.ogg', '.aac', '.flac', '.wav'}
 VIDEO_EXTS = {'.mp4', '.mkv', '.webm', '.mov', '.avi'}
@@ -117,14 +117,27 @@ def get_info():
             formats.sort(key=lambda x: x['height'], reverse=True)
             vc = info.get('view_count', 0)
             views = f"{vc/1000000:.1f}M views" if vc >= 1000000 else (f"{vc/1000:.1f}K views" if vc >= 1000 else f"{vc} views")
-            return jsonify({"title": info.get('title', 'Unknown'), "thumbnail": info.get('thumbnail', ''), "duration": info.get('duration_string', ''), "formats": formats, "uploader": info.get('uploader', 'Channel'), "views": views, "description": info.get('description', '')})
+            
+            # Channel Avatar Extraction
+            uploader_avatar = info.get('uploader_avatar') or info.get('channel_thumbnail') or info.get('thumbnail', '')
+
+            return jsonify({
+                "title": info.get('title', 'Unknown'), 
+                "thumbnail": info.get('thumbnail', ''), 
+                "duration": info.get('duration_string', ''), 
+                "formats": formats, 
+                "uploader": info.get('uploader', 'Channel'), 
+                "uploader_avatar": uploader_avatar, # Added Avatar
+                "views": views, 
+                "description": info.get('description', '')
+            })
     except Exception as e: return jsonify({"error": str(e)}), 500
 
-def download_worker(tid, url, height, title, thumb, uploader, views, desc, save_thumb):
+def download_worker(tid, url, height, title, thumb, uploader, avatar, views, desc, save_thumb):
     outtmpl = str(DOWNLOAD_DIR / f"{tid}_%(title).100B.%(ext)s")
     
     def hook(d):
-        if cancel_flags.get(tid): # Cancel চেক
+        if cancel_flags.get(tid):
             raise yt_dlp.utils.DownloadCancelled()
             
         if d['status'] == 'downloading':
@@ -163,9 +176,10 @@ def download_worker(tid, url, height, title, thumb, uploader, views, desc, save_
                 'title': title, 
                 'filename': os.path.basename(filename), 
                 'thumbnail': thumb, 
+                'uploader': uploader, 
+                'uploader_avatar': avatar, # Save Avatar
                 'resolution': 'Audio' if height == 'audio' else f"{height}p", 
                 'time': time.strftime("%Y-%m-%d %H:%M"), 
-                'uploader': uploader, 
                 'views': views, 
                 'description': desc,
                 'original_url': url
@@ -175,7 +189,6 @@ def download_worker(tid, url, height, title, thumb, uploader, views, desc, save_
     except Exception as e:
         if cancel_flags.get(tid) or "DownloadCancelled" in str(e):
             tasks[tid].update({'status': 'cancelled'})
-            # Cancel হলে অসম্পূর্ণ ফাইল ডিলিট করে দেওয়া
             for f in DOWNLOAD_DIR.glob(f"{tid}_*"):
                 try: os.remove(f)
                 except: pass
@@ -201,7 +214,7 @@ def start_download():
     
     tid = str(uuid.uuid4())[:8]
     tasks[tid] = {'status': 'starting', 'percent': 0, 'filename': ''}
-    threading.Thread(target=download_worker, args=(tid, url, d.get('height'), d.get('title', 'Video'), d.get('thumb', ''), d.get('uploader', 'Channel'), d.get('views', '0'), d.get('description', ''), d.get('save_thumb', False)), daemon=True).start()
+    threading.Thread(target=download_worker, args=(tid, url, d.get('height'), d.get('title', 'Video'), d.get('thumb', ''), d.get('uploader', 'Channel'), d.get('avatar', ''), d.get('views', '0'), d.get('description', ''), d.get('save_thumb', False)), daemon=True).start()
     return jsonify({"task_id": tid})
 
 @app.route('/api/progress/<tid>', methods=['GET'])
@@ -230,6 +243,7 @@ def get_local_videos():
             'filename': f.name, 
             'thumbnail': m.get('thumbnail', ''), 
             'uploader': m.get('uploader', 'Unknown'), 
+            'uploader_avatar': m.get('uploader_avatar', ''), # Send Avatar to Frontend
             'views': m.get('views', ''), 
             'resolution': m.get('resolution', 'Audio' if is_audio else 'Local'), 
             'description': m.get('description', ''), 
