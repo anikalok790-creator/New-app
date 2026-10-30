@@ -409,7 +409,18 @@
         let activeTaskId = localStorage.getItem('activeTaskId') || ""; 
         let progressInterval = null;
         let isProgressFetching = false; 
-        let currentDownloadBtn = null; 
+        let currentDownloadBtn = null;
+
+        // অ্যাপ মিনিমাইজ বা ক্লোজ হলে ডাউনলোড বন্ধ করার লজিক
+        document.addEventListener("visibilitychange", () => {
+            const bgEnabled = localStorage.getItem('bgDownload') === 'true';
+            if (document.hidden && !bgEnabled && activeTaskId) {
+                // Background DL বন্ধ থাকলে এবং অ্যাপ মিনিমাইজ হলে ডাউনলোড বাতিল হবে
+                fetch(`/api/cancel-download/${activeTaskId}`, { method: 'POST', keepalive: true });
+                localStorage.removeItem('activeTaskId'); activeTaskId = "";
+                if(progressInterval) clearInterval(progressInterval);
+            }
+        });
 
         const videoObserver = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
@@ -442,7 +453,16 @@
         document.addEventListener("DOMContentLoaded", () => {
             loadToggles(); loadProfileData(); checkDefaultQuality(); checkNotifications(); loadHomeFeed();
             
-            if(activeTaskId) { resumeBackgroundDownload(); }
+            // Background DL চেক করে রিজিউম করা
+            const bgEnabled = localStorage.getItem('bgDownload') === 'true';
+            if(activeTaskId) {
+                if(bgEnabled) {
+                    resumeBackgroundDownload();
+                } else {
+                    // যদি Background DL বন্ধ থাকে, তবে পুরনো হ্যাং হওয়া টাস্ক ডিলিট করে দাও
+                    localStorage.removeItem('activeTaskId'); activeTaskId = "";
+                }
+            }
 
             if(localStorage.getItem('autoPaste') === 'true') {
                 navigator.clipboard.readText().then(text => {
@@ -851,10 +871,16 @@
             if(activeTaskId) {
                 await fetch(`/api/cancel-download/${activeTaskId}`, { method: 'POST' });
             }
-            // এখানে activeTaskId বা progressInterval ক্লিয়ার করা যাবে না। 
-            // ব্যাকগ্রাউন্ড থেকে 'cancelled' স্ট্যাটাস আসার পর trackProgress ফাংশন নিজেই সব রিসেট করবে।
+            localStorage.removeItem('activeTaskId'); activeTaskId = "";
             document.getElementById('progressModal').style.display = 'none';
             showToast("Cancelling download...");
+
+            if(currentDownloadBtn) {
+                currentDownloadBtn.innerHTML = '<i class="fa-solid fa-arrow-down"></i> Download';
+                currentDownloadBtn.disabled = false;
+                currentDownloadBtn = null;
+            }
+            if(progressInterval) clearInterval(progressInterval);
         }
 
         async function trackProgress(taskId, btnElement, actualHeight) {
@@ -924,13 +950,11 @@
                         
                         document.getElementById('progressModal').style.display = 'none'; showToast("Download Cancelled", true);
                         
-                        // বাটনটি আগের অবস্থায় ফিরিয়ে আনা
                         if(currentDownloadBtn) {
                             currentDownloadBtn.innerHTML = '<i class="fa-solid fa-arrow-down"></i> Download';
                             currentDownloadBtn.disabled = false;
                             currentDownloadBtn = null;
                         } else {
-                            // যদি সরাসরি বাটনটি না পাওয়া যায়, তবে লিস্ট রি-রেন্ডার করা
                             if(document.getElementById('formatList').innerHTML !== '') {
                                 renderFormats(document.querySelector('.tab.active').innerText.toLowerCase());
                             }
