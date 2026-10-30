@@ -13,3 +13,4 @@ history.json
 *.webp
 .env
 .DS_Store
+bin/

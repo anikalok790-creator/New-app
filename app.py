@@ -28,12 +28,12 @@ HISTORY_FILE = pathlib.Path("history.json")
 tasks = {}
 download_history = []
 history_lock = threading.Lock()
+cancel_flags = {} # ডাউনলোড বাতিল ট্র্যাক করার জন্য
 
 AUDIO_EXTS = {'.m4a', '.mp3', '.webm', '.opus', '.ogg', '.aac', '.flac', '.wav'}
 VIDEO_EXTS = {'.mp4', '.mkv', '.webm', '.mov', '.avi'}
 MEDIA_EXTS = AUDIO_EXTS | VIDEO_EXTS
 
-# FFmpeg Auto-Download Function
 def get_ffmpeg_path():
     ffmpeg_file = BIN_DIR / "ffmpeg"
     if ffmpeg_file.exists():
@@ -48,8 +48,6 @@ def get_ffmpeg_path():
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, context=ctx) as response, open(ffmpeg_file, 'wb') as out_file:
             out_file.write(response.read())
-        
-        # Make it executable
         os.chmod(ffmpeg_file, 0o755)
         print("FFmpeg downloaded and made executable.")
         return str(ffmpeg_file)
@@ -57,7 +55,6 @@ def get_ffmpeg_path():
         print(f"Failed to download ffmpeg: {e}")
         return None
 
-# Pre-download ffmpeg on startup
 FFMPEG_PATH = get_ffmpeg_path()
 
 def verify_token():
@@ -127,6 +124,9 @@ def download_worker(tid, url, height, title, thumb, uploader, views, desc, save_
     outtmpl = str(DOWNLOAD_DIR / f"{tid}_%(title).100B.%(ext)s")
     
     def hook(d):
+        if cancel_flags.get(tid): # Cancel চেক
+            raise yt_dlp.utils.DownloadCancelled()
+            
         if d['status'] == 'downloading':
             total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
             dl = d.get('downloaded_bytes', 0)
@@ -136,7 +136,6 @@ def download_worker(tid, url, height, title, thumb, uploader, views, desc, save_
 
     opts = {'outtmpl': outtmpl, 'quiet': True, 'no_warnings': True, 'progress_hooks': [hook], 'nocheckcertificate': True}
 
-    # Inject FFmpeg
     if FFMPEG_PATH and os.path.exists(FFMPEG_PATH):
         opts['ffmpeg_location'] = FFMPEG_PATH
 
@@ -159,10 +158,38 @@ def download_worker(tid, url, height, title, thumb, uploader, views, desc, save_
         tasks[tid].update({'status': 'done', 'filename': filename})
 
         with history_lock:
-            download_history.append({'task_id': tid, 'title': title, 'filename': os.path.basename(filename), 'thumbnail': thumb, 'resolution': 'Audio' if height == 'audio' else f"{height}p", 'time': time.strftime("%Y-%m-%d %H:%M"), 'uploader': uploader, 'views': views, 'description': desc})
+            download_history.append({
+                'task_id': tid, 
+                'title': title, 
+                'filename': os.path.basename(filename), 
+                'thumbnail': thumb, 
+                'resolution': 'Audio' if height == 'audio' else f"{height}p", 
+                'time': time.strftime("%Y-%m-%d %H:%M"), 
+                'uploader': uploader, 
+                'views': views, 
+                'description': desc,
+                'original_url': url
+            })
         save_history_to_file()
+
     except Exception as e:
-        tasks[tid].update({'status': 'error', 'error': str(e)})
+        if cancel_flags.get(tid) or "DownloadCancelled" in str(e):
+            tasks[tid].update({'status': 'cancelled'})
+            # Cancel হলে অসম্পূর্ণ ফাইল ডিলিট করে দেওয়া
+            for f in DOWNLOAD_DIR.glob(f"{tid}_*"):
+                try: os.remove(f)
+                except: pass
+        else:
+            tasks[tid].update({'status': 'error', 'error': str(e)})
+    finally:
+        if tid in cancel_flags: del cancel_flags[tid]
+
+@app.route('/api/cancel-download/<tid>', methods=['POST'])
+def cancel_download(tid):
+    verify_token()
+    if tid in tasks and tasks[tid]['status'] in ['downloading', 'starting', 'merging']:
+        cancel_flags[tid] = True
+    return jsonify({"status": "cancelling"})
 
 @app.route('/api/start-download', methods=['POST'])
 @limiter.limit("10 per minute")
@@ -195,7 +222,22 @@ def get_local_videos():
         emb_id = parts[0] if len(parts) > 1 and len(parts[0]) == 8 else ''
         fallback_title = parts[1] if len(parts) > 1 else f.stem
         is_audio = f.suffix.lower() in AUDIO_EXTS and m.get('resolution') == 'Audio'
-        vids.append({'task_id': m.get('task_id', emb_id), 'title': m.get('title') or fallback_title, 'filename': f.name, 'thumbnail': m.get('thumbnail', ''), 'uploader': m.get('uploader', 'Unknown'), 'views': m.get('views', ''), 'resolution': m.get('resolution', 'Audio' if is_audio else 'Local'), 'description': m.get('description', ''), 'time': m.get('time') or time.strftime('%Y-%m-%d %H:%M', time.localtime(f.stat().st_mtime)), 'url': f"/api/stream/{urllib.parse.quote(f.name)}", 'timestamp': f.stat().st_mtime})
+        orig_url = m.get('original_url', '')
+        
+        vids.append({
+            'task_id': m.get('task_id', emb_id), 
+            'title': m.get('title') or fallback_title, 
+            'filename': f.name, 
+            'thumbnail': m.get('thumbnail', ''), 
+            'uploader': m.get('uploader', 'Unknown'), 
+            'views': m.get('views', ''), 
+            'resolution': m.get('resolution', 'Audio' if is_audio else 'Local'), 
+            'description': m.get('description', ''), 
+            'time': m.get('time') or time.strftime('%Y-%m-%d %H:%M', time.localtime(f.stat().st_mtime)), 
+            'url': f"/api/stream/{urllib.parse.quote(f.name)}", 
+            'original_url': orig_url, 
+            'timestamp': f.stat().st_mtime
+        })
     return jsonify(vids)
 
 @app.route('/api/history', methods=['GET'])
@@ -242,16 +284,6 @@ def get_file(tid):
     for i in download_history:
         if i['task_id'] == tid: title, res = i['title'], i['resolution']; break
     return send_file(fpath, as_attachment=True, conditional=True, download_name=f"[{res}] {get_safe_filename(title)}.{ext}")
-
-@app.route('/api/download-history-file/<tid>', methods=['GET'])
-def download_history_file(tid):
-    for i in download_history:
-        if i['task_id'] == tid:
-            fpath = DOWNLOAD_DIR / sanitize_basename(i['filename'])
-            if fpath.exists():
-                ext = i['filename'].split('.')[-1]
-                return send_file(fpath, as_attachment=True, conditional=True, download_name=f"[{i['resolution']}] {get_safe_filename(i['title'])}.{ext}")
-    return jsonify({"error": "File not found"}), 404
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)

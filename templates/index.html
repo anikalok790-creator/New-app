@@ -17,7 +17,7 @@
         .header-icons { display: flex; align-items: center; gap: 20px; }
         .header-icons i { font-size: 1.2rem; cursor: pointer; padding: 8px; position: relative; }
         .header-icons i:active { background: var(--bg-surface); border-radius: 50%; }
-        .red-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; background: #FF0000; border-radius: 50%; border: 2px solid var(--bg-body); display: none; }
+        .notif-badge { position: absolute; top: 2px; right: 2px; min-width: 18px; height: 18px; background: #FF0000; color: white; border-radius: 50%; border: 2px solid var(--bg-body); display: none; justify-content: center; align-items: center; font-size: 0.6rem; font-weight: 700; padding: 0 4px; }
         .header-avatar { width: 28px; height: 28px; border-radius: 50%; background: #E5E5E5; display: flex; justify-content: center; align-items: center; font-size: 0.8rem; font-weight: 600; cursor: pointer; overflow: hidden; }
         .main-container { width: 100%; max-width: 600px; margin: 0 auto; }
         .page { display: none; animation: fadeIn 0.2s ease; }
@@ -119,7 +119,8 @@
         .modal-box { background: var(--bg-body); padding: 0; border-radius: var(--radius-lg); width: 85%; max-width: 340px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); animation: popIn 0.2s ease; overflow: hidden; max-height: 90vh; display: flex; flex-direction: column; }
         @keyframes popIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         .modal-header { padding: 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-        .modal-header h3 { font-size: 1.1rem; font-weight: 700; }
+        .modal-header h3 { font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+        .count-badge { background: var(--primary); color: var(--black); font-size: 0.75rem; font-weight: 800; padding: 2px 8px; border-radius: 12px; }
         .modal-close { cursor: pointer; font-size: 1.2rem; color: var(--text-muted); padding: 5px; }
         .player-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 10000; flex-direction: column; }
         .player-header { padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent); position: absolute; top: 0; left: 0; width: 100%; z-index: 10; }
@@ -181,6 +182,11 @@
         .sk-thumb { width: 100%; padding-top: 56.25%; background: var(--bg-surface); animation: pulse 1.5s infinite; }
         .sk-text { height: 16px; background: var(--bg-surface); border-radius: 4px; margin: 12px 16px 0 16px; width: 80%; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        
+        .spinner-container { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; }
+        .spinner-container i { font-size: 2.5rem; color: var(--primary); animation: spin 1s linear infinite; margin-bottom: 15px; }
+        .spinner-container p { color: var(--text-muted); font-weight: 500; font-size: 0.9rem; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
@@ -188,7 +194,9 @@
         <div class="logo"><div class="logo-icon"><i class="fa-solid fa-bolt"></i></div>SnapPro</div>
         <div class="header-icons">
             <i class="fa-solid fa-magnifying-glass" onclick="focusSearch()"></i>
-            <i class="fa-regular fa-bell" onclick="openNotifications()"><div class="red-dot" id="notifDot"></div></i>
+            <i class="fa-regular fa-bell" onclick="openNotifications()">
+                <div class="notif-badge" id="notifBadge">0</div>
+            </i>
             <div class="header-avatar" id="headerAvatar" onclick="switchTab('profile', document.querySelectorAll('.nav-item')[3])">U</div>
         </div>
     </div>
@@ -270,7 +278,10 @@
 
     <div id="notificationModal" class="modal-overlay">
         <div class="modal-box">
-            <div class="modal-header"><h3>Activity</h3><i class="fa-solid fa-xmark modal-close" onclick="closeNotifications()"></i></div>
+            <div class="modal-header">
+                <h3>Activity <span id="notifTotalCount" class="count-badge">0</span></h3>
+                <i class="fa-solid fa-xmark modal-close" onclick="closeNotifications()"></i>
+            </div>
             <div id="notifList" class="notification-list"></div>
         </div>
     </div>
@@ -285,8 +296,22 @@
                 <h3 id="vdTitle" class="vd-title"></h3>
                 <div id="vdChannel" class="vd-channel"><i class="fa-solid fa-circle-user"></i> Channel</div>
                 <div id="vdDesc" class="vd-desc"></div>
-                <button id="vdDownloadBtn" class="vd-btn" onclick="downloadFromDetailsModal()"><i class="fa-solid fa-download"></i> Download Again</button>
+                <button id="vdDownloadBtn" class="vd-btn" onclick="downloadFromDetailsModal()"><i class="fa-solid fa-download"></i> Change Quality / Download Again</button>
             </div>
+        </div>
+    </div>
+
+    <div id="resolutionModal" class="modal-overlay">
+        <div class="modal-box" style="max-height: 80vh; padding-bottom: 20px;">
+            <div class="modal-header">
+                <h3>Select Quality</h3>
+                <i class="fa-solid fa-xmark modal-close" onclick="closeResolutionModal()"></i>
+            </div>
+            <div id="resLoading" class="spinner-container" style="display: none;">
+                <i class="fa-solid fa-circle-notch"></i>
+                <p>Fetching available qualities...</p>
+            </div>
+            <div id="resList" class="download-list" style="overflow-y: auto; max-height: calc(80vh - 60px); display: none; padding-bottom: 20px;"></div>
         </div>
     </div>
 
@@ -313,9 +338,16 @@
         </div>
     </div>
 
+    <!-- Download Progress Modal with Cancel Button -->
     <div id="progressModal" class="modal-overlay">
         <div class="modal-box progress-modal-box">
-            <div class="modal-header" style="padding: 0 0 20px 0; border: none;"><h3 id="modalTitle">Downloading</h3><span class="percent-badge" id="circlePercent">0%</span></div>
+            <div class="modal-header" style="padding: 0 0 20px 0; border: none; display: flex; justify-content: space-between; align-items: center;">
+                <h3 id="modalTitle">Downloading</h3>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="percent-badge" id="circlePercent">0%</span>
+                    <i class="fa-solid fa-xmark modal-close" onclick="cancelCurrentDownload()" style="cursor: pointer; font-size: 1.2rem; color: var(--text-muted); padding: 5px;"></i>
+                </div>
+            </div>
             <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
             <div class="progress-stats"><span id="modalSubtitle">Connecting...</span></div>
             <div class="info-grid">
@@ -380,12 +412,17 @@
         let currentVideoDesc = "";
         let currentVideoUrl = "";
         let currentHistoryDownloadId = "";
+        let currentHistoryDownloadUrl = ""; 
         let currentHistoryDownloadTitle = "";
         let currentHistoryDownloadRes = "";
         let fileToDelete = ""; 
         let currentPlayingFullscreenUrl = "";
         let globalMuteState = localStorage.getItem('globalMute') !== 'false'; 
         let activeVideoElement = null; 
+
+        // Download Tracking Variables
+        let activeTaskId = "";
+        let progressInterval = null;
 
         const videoObserver = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
@@ -426,8 +463,15 @@
 
         function checkNotifications() {
             fetch('/api/history').then(res => res.json()).then(data => {
-                const lastCount = parseInt(localStorage.getItem('lastNotifCount') || '0');
-                document.getElementById('notifDot').style.display = (data.length > lastCount) ? 'block' : 'none';
+                const badge = document.getElementById('notifBadge');
+                const count = data.length;
+                document.getElementById('notifTotalCount').innerText = count;
+                if(count > 0) {
+                    badge.innerText = count > 99 ? '99+' : count;
+                    badge.style.display = 'flex';
+                } else {
+                    badge.style.display = 'none';
+                }
             }).catch(()=>{});
         }
 
@@ -472,7 +516,7 @@
             if(!fileToDelete) return; const filenameToDelete = fileToDelete; closeDeleteModal();
             try {
                 const res = await fetch('/api/delete-video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filename: filenameToDelete }) });
-                if(res.ok) { showToast("Video deleted successfully!"); loadHomeFeed(); loadHistory(); loadProfileData(); } 
+                if(res.ok) { showToast("Video deleted successfully!"); loadHomeFeed(); loadHistory(); loadProfileData(); checkNotifications(); } 
             } catch (err) { showToast("Error deleting video", true); }
         }
         function updateMuteButtons() { document.querySelectorAll('.video-mute-btn i').forEach(icon => { icon.className = globalMuteState ? 'fa-solid fa-volume-xmark' : 'fa-solid fa-volume-high'; }); }
@@ -498,12 +542,14 @@
             showToast(formattedName + (event.target.checked ? " Enabled" : " Disabled"));
         }
         function focusSearch() { switchTab('home', document.querySelectorAll('.nav-item')[0]); window.scrollTo({ top: 0, behavior: 'smooth' }); setTimeout(() => document.getElementById('urlInput').focus(), 100); }
+        
         function openNotifications() { 
-            document.getElementById('notifDot').style.display = 'none';
             const list = document.getElementById('notifList'); list.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">Loading...</div>';
             document.getElementById('notificationModal').style.display = 'flex';
             fetch('/api/history').then(res => res.json()).then(data => {
-                list.innerHTML = ''; localStorage.setItem('lastNotifCount', data.length);
+                list.innerHTML = ''; 
+                document.getElementById('notifTotalCount').innerText = data.length; 
+
                 if(data.length === 0) { list.innerHTML = `<div class="empty-notifications"><i class="fa-regular fa-bell-slash"></i><p>No new notifications</p></div>`; return; }
                 data.forEach(item => {
                     const el = document.createElement('div'); el.className = 'notification-item'; el.onclick = () => showVideoDetails(item);
@@ -512,6 +558,7 @@
                 });
             });
         }
+        
         function closeNotifications() { document.getElementById('notificationModal').style.display = 'none'; }
         function openSettingsModal() { document.getElementById('settingsModal').style.display = 'flex'; }
         function closeSettingsModal() { document.getElementById('settingsModal').style.display = 'none'; }
@@ -523,29 +570,96 @@
         function openQualityModal() { document.getElementById('qualityModal').style.display = 'flex'; }
         function closeQualityModal() { document.getElementById('qualityModal').style.display = 'none'; }
         function closeDetailsModal() { document.getElementById('detailsModal').style.display = 'none'; }
+        function closeResolutionModal() { document.getElementById('resolutionModal').style.display = 'none'; }
+
         function showVideoDetails(item) {
             closeNotifications(); closeClearModal(); closeSettingsModal();
-            currentHistoryDownloadId = item.task_id || item.filename; currentHistoryDownloadTitle = item.title; currentHistoryDownloadRes = item.resolution;
+            currentHistoryDownloadId = item.task_id || item.filename; 
+            currentHistoryDownloadTitle = item.title; 
+            currentHistoryDownloadRes = item.resolution;
+            
+            currentHistoryDownloadUrl = item.original_url || '';
+            
             document.getElementById('vdThumb').src = item.thumbnail || '';
             document.getElementById('vdTitle').innerText = item.title;
             let channelInfo = ''; if(item.uploader) channelInfo += item.uploader; if(item.views) channelInfo += ` • ${item.views}`; if(!channelInfo) channelInfo = 'Local Video';
             document.getElementById('vdChannel').innerHTML = `<i class="fa-solid fa-circle-user"></i> ${channelInfo}`;
-            document.getElementById('vdDesc').innerText = item.description || 'No description available for this video.';
-            const btn = document.getElementById('vdDownloadBtn'); btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<i class="fa-solid fa-download"></i> Download Again';
+            
+            let cleanDesc = item.description || '';
+            if(cleanDesc.includes(item.title)) {
+                cleanDesc = cleanDesc.replace(new RegExp(item.title, 'g'), '').trim();
+            }
+            document.getElementById('vdDesc').innerText = cleanDesc || 'No description available for this video.';
+            
+            const btn = document.getElementById('vdDownloadBtn'); 
+            btn.disabled = false; 
+            btn.style.opacity = '1'; 
+            btn.innerHTML = '<i class="fa-solid fa-download"></i> Change Quality / Download Again';
             document.getElementById('detailsModal').style.display = 'flex';
         }
+
         function openCurrentVideoDetails() {
             if(!currentVideoTitle) return;
-            showVideoDetails({ title: currentVideoTitle, thumbnail: currentVideoThumb, uploader: currentVideoUploader, views: currentVideoViews, description: currentVideoDesc, filename: '' });
-            const btn = document.getElementById('vdDownloadBtn'); btn.innerHTML = '<i class="fa-solid fa-check"></i> Already Downloaded'; btn.style.opacity = '0.5'; btn.disabled = true;
+            showVideoDetails({ title: currentVideoTitle, thumbnail: currentVideoThumb, uploader: currentVideoUploader, views: currentVideoViews, description: currentVideoDesc, filename: '', original_url: currentVideoUrl });
+            const btn = document.getElementById('vdDownloadBtn'); 
+            btn.innerHTML = '<i class="fa-solid fa-arrow-down"></i> Choose Resolution';
+            btn.style.opacity = '1'; 
+            btn.disabled = false;
         }
-        function downloadFromDetailsModal() {
-            if(currentHistoryDownloadId) {
-                // Direct URL Download for WebToApp Compatibility
-                window.location.href = `/api/download-history-file/${currentHistoryDownloadId}`;
-                showToast("Downloading file..."); closeDetailsModal();
+
+        async function downloadFromDetailsModal() {
+            if(currentHistoryDownloadUrl && currentHistoryDownloadUrl.startsWith('http')) {
+                closeDetailsModal(); 
+                
+                document.getElementById('resolutionModal').style.display = 'flex';
+                document.getElementById('resLoading').style.display = 'flex';
+                document.getElementById('resList').style.display = 'none';
+                document.getElementById('resList').innerHTML = '';
+
+                try {
+                    const response = await fetch('/api/info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: currentHistoryDownloadUrl }) });
+                    const data = await response.json(); 
+                    if (!response.ok) throw new Error(data.error);
+
+                    currentVideoUrl = currentHistoryDownloadUrl;
+                    currentVideoTitle = data.title;
+                    currentVideoThumb = data.thumbnail;
+                    currentVideoUploader = data.uploader;
+                    currentVideoViews = data.views;
+                    currentVideoDesc = data.description;
+                    currentFormats = data.formats;
+
+                    document.getElementById('resLoading').style.display = 'none';
+                    document.getElementById('resList').style.display = 'block';
+                    renderResolutionList('video');
+
+                } catch (error) {
+                    document.getElementById('resLoading').innerHTML = `<p style="color: #FF0000; text-align: center; font-weight: 600;">Error: ${error.message}</p>`;
+                }
+            } else {
+                showToast("Original URL missing. Please delete and re-download this video to use this feature.", true);
             }
         }
+
+        function renderResolutionList(type) {
+            const list = document.getElementById('resList'); 
+            list.innerHTML = '';
+            
+            if (type === 'audio') {
+                const item = document.createElement('div'); item.className = 'list-item';
+                item.innerHTML = `<div class="item-left"><div class="quality-tag">Audio</div><div class="item-meta"><span class="format">M4A Format</span><span class="size">High Quality</span></div></div><button class="btn-dl" onclick="startDownload('audio', this)"><i class="fa-solid fa-arrow-down"></i> Download</button>`;
+                list.appendChild(item);
+            } else {
+                currentFormats.forEach(fmt => {
+                    if(fmt.height === 'audio') return; 
+                    const sizeMB = fmt.filesize ? (fmt.filesize / (1024 * 1024)).toFixed(1) + ' MB' : 'Auto';
+                    const item = document.createElement('div'); item.className = 'list-item';
+                    item.innerHTML = `<div class="item-left"><div class="quality-tag">${fmt.resolution}</div><div class="item-meta"><span class="format">${fmt.ext.toUpperCase()} Video</span><span class="size">${sizeMB}</span></div></div><button class="btn-dl" onclick="startDownload('${fmt.height}', this)"><i class="fa-solid fa-arrow-down"></i> Download</button>`;
+                    list.appendChild(item);
+                });
+            }
+        }
+
         function loadProfileData() {
             const savedAvatar = localStorage.getItem('userAvatar');
             if(savedAvatar) {
@@ -600,6 +714,8 @@
         async function fetchVideoInfo() {
             const url = document.getElementById('urlInput').value.trim();
             if (!url) return showToast("Please enter a URL", true);
+            if(!url.startsWith('http')) { return showToast("Invalid URL", true); }
+
             const searchBtn = document.getElementById('searchBtn'); searchBtn.disabled = true; searchBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
             document.getElementById('emptyState').style.display = 'none'; document.getElementById('videoFeed').style.display = 'none'; document.getElementById('videoInfo').style.display = 'none';
             document.getElementById('formatTabs').style.display = 'none'; document.getElementById('formatList').innerHTML = ''; document.getElementById('skeleton').style.display = 'block';
@@ -637,29 +753,46 @@
                 if(data.length === 0) { list.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted);">No downloads yet.</div>'; return; }
                 data.forEach(item => {
                     const el = document.createElement('div'); el.className = 'history-item'; el.onclick = () => showVideoDetails(item);
-                    const safeTitle = item.title.replace(/'/g, "\\'"); const safeFilename = item.filename.replace(/'/g, "\\'");
-                    el.innerHTML = `<img src="${item.thumbnail || ''}" class="history-thumb"><div class="history-details"><h4>${item.title}</h4><p>${item.resolution} • ${item.time}</p></div><div class="history-actions"><button class="btn-history-dl" onclick="event.stopPropagation(); downloadFromHistory('${item.task_id}')"><i class="fa-solid fa-download"></i></button><button class="btn-history-del" onclick="openDeleteModal('${safeFilename}', event)"><i class="fa-solid fa-trash-can"></i></button></div>`;
+                    const safeFilename = item.filename.replace(/'/g, "\\'");
+                    el.innerHTML = `<img src="${item.thumbnail || ''}" class="history-thumb"><div class="history-details"><h4>${item.title}</h4><p>${item.resolution} • ${item.time}</p></div><div class="history-actions"><button class="btn-history-dl" onclick="event.stopPropagation(); showVideoDetailsById('${safeFilename}')"><i class="fa-solid fa-download"></i></button><button class="btn-history-del" onclick="openDeleteModal('${safeFilename}', event)"><i class="fa-solid fa-trash-can"></i></button></div>`;
                     list.appendChild(el);
                 });
             } catch (err) {}
         }
-        function downloadFromHistory(taskId) {
-            if(!taskId) return; 
-            window.location.href = `/api/download-history-file/${taskId}`; // WebToApp Native Download
-            showToast("Downloading file...");
+
+        // Cancel Download Function
+        async function cancelCurrentDownload() {
+            if(activeTaskId) {
+                await fetch(`/api/cancel-download/${activeTaskId}`, { method: 'POST' });
+            }
+            if(progressInterval) clearInterval(progressInterval);
+            document.getElementById('progressModal').style.display = 'none';
+            showToast("Download Cancelled");
         }
+
         async function startDownload(height, btnElement) {
+            closeResolutionModal();
+
             const originalText = btnElement.innerHTML; btnElement.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>'; btnElement.disabled = true;
             const saveThumb = document.getElementById('saveThumbToggle').checked; const isTurbo = document.getElementById('turboSpeedToggle').checked;
             try {
                 const response = await fetch('/api/start-download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: currentVideoUrl, height: height, title: currentVideoTitle, thumb: currentVideoThumb, uploader: currentVideoUploader, views: currentVideoViews, description: currentVideoDesc, save_thumb: saveThumb }) });
                 const data = await response.json(); if (!response.ok) throw new Error(data.error);
-                const taskId = data.task_id;
-                document.getElementById('progressModal').style.display = 'flex'; document.getElementById('progressFill').style.width = "0%"; document.getElementById('circlePercent').innerText = "0%";
+                
+                activeTaskId = data.task_id; // Task ID সেভ করা হলো
+
+                document.getElementById('progressModal').style.display = 'flex'; 
+                document.getElementById('progressFill').style.width = "0%"; 
+                document.getElementById('circlePercent').innerText = "0%";
                 document.getElementById('modalTitle').innerText = height === 'audio' ? "Downloading Audio" : "Downloading Video";
                 document.getElementById('modalSubtitle').innerText = isTurbo ? "Turbo Speed Activated 🚀" : "Connecting...";
-                const interval = setInterval(async () => {
-                    const progRes = await fetch(`/api/progress/${taskId}`); const prog = await progRes.json();
+                
+                progressInterval = setInterval(async () => {
+                    if(!activeTaskId) return; // Cancel হয়ে গেলে আর চেক করবে না
+                    
+                    const progRes = await fetch(`/api/progress/${activeTaskId}`); 
+                    const prog = await progRes.json();
+                    
                     if (prog.status === 'downloading') {
                         document.getElementById('progressFill').style.width = prog.percent + '%'; document.getElementById('circlePercent').innerText = prog.percent + '%';
                         document.getElementById('statSize').innerText = `${prog.downloaded_mb} MB`; document.getElementById('statSpeed').innerText = prog.speed + ' MB/s';
@@ -670,17 +803,22 @@
                         document.getElementById('progressFill').style.width = '100%'; document.getElementById('circlePercent').innerText = "100%";
                         document.getElementById('modalTitle').innerText = "Processing"; document.getElementById('modalSubtitle').innerText = "Merging..."; document.getElementById('statSpeed').innerText = "--";
                     } else if (prog.status === 'done') {
-                        clearInterval(interval); document.getElementById('progressFill').style.width = '100%'; document.getElementById('circlePercent').innerText = "100%"; document.getElementById('modalTitle').innerText = "Success";
+                        clearInterval(progressInterval); activeTaskId = ""; // Task clear
+                        document.getElementById('progressFill').style.width = '100%'; document.getElementById('circlePercent').innerText = "100%"; document.getElementById('modalTitle').innerText = "Success";
                         setTimeout(() => {
-                            // WebToApp Native Download Trigger
-                            window.location.href = `/api/get-file/${taskId}`;
+                            window.location.href = `/api/get-file/${data.task_id}`;
                             setTimeout(() => {
                                 document.getElementById('progressModal').style.display = 'none'; showToast("Download Complete!");
                                 btnElement.innerHTML = originalText; btnElement.disabled = false; loadHomeFeed(); checkNotifications(); 
                             }, 1500);
                         }, 500);
+                    } else if (prog.status === 'cancelled') {
+                        clearInterval(progressInterval); activeTaskId = "";
+                        document.getElementById('progressModal').style.display = 'none'; showToast("Download Cancelled", true);
+                        btnElement.innerHTML = originalText; btnElement.disabled = false; 
                     } else if (prog.status === 'error') {
-                        clearInterval(interval); document.getElementById('progressModal').style.display = 'none'; showToast("Error: " + prog.error, true);
+                        clearInterval(progressInterval); activeTaskId = "";
+                        document.getElementById('progressModal').style.display = 'none'; showToast("Error: " + prog.error, true);
                         btnElement.innerHTML = originalText; btnElement.disabled = false;
                     }
                 }, 800);
