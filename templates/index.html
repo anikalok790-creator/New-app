@@ -79,12 +79,12 @@
         .download-list { padding: 0 16px; }
         .list-item { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--border-color); gap: 10px; }
         .item-left { flex: 1; display: flex; align-items: center; gap: 12px; min-width: 0; }
-        .quality-tag { font-size: 0.95rem; font-weight: 700; min-width: 55px; color: var(--text-main); }
+        .quality-tag { font-size: 0.95rem; font-weight: 700; min-width: 55px; color: var(--text-main); display: flex; align-items: center; gap: 6px; }
+        .default-badge { font-size: 0.55rem; background: var(--primary); color: var(--black); padding: 2px 6px; border-radius: 4px; font-weight: 800; letter-spacing: 0.5px; }
         .item-meta { display: flex; flex-direction: column; min-width: 0; }
         .item-meta .format { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .item-meta .size { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
         
-        /* Updated Button Style */
         .btn-dl { flex-shrink: 0; background: var(--bg-surface); color: var(--text-main); border: none; padding: 8px 14px; border-radius: var(--radius-pill); font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: 0.2s; min-width: 115px; }
         .btn-dl:active { background: var(--primary); }
         .btn-dl.completed { background: #E5E5E5; color: #A0A0A0; cursor: not-allowed; }
@@ -352,8 +352,8 @@
 
     <div id="cacheModal" class="modal-overlay">
         <div class="modal-box confirm-box">
-            <div class="confirm-title">Clear Cache?</div><div class="confirm-text">This will remove temporary files and free up space. Your download history will not be deleted.</div>
-            <div class="confirm-actions"><button class="btn-confirm btn-cancel" onclick="closeCacheModal()">Cancel</button><button class="btn-confirm btn-primary" onclick="confirmClearCache()">Clear Cache</button></div>
+            <div class="confirm-title">Clear Cache?</div><div class="confirm-text">This will delete ALL downloaded videos and history to free up space. This action cannot be undone.</div>
+            <div class="confirm-actions"><button class="btn-confirm btn-cancel" onclick="closeCacheModal()">Cancel</button><button class="btn-confirm btn-delete" onclick="confirmClearCache()">Clear</button></div>
         </div>
     </div>
 
@@ -395,7 +395,7 @@
         let currentVideoViews = "";
         let currentVideoDesc = "";
         let currentVideoUrl = "";
-        let currentAudioSize = ""; // নতুন ভ্যারিয়েবল
+        let currentAudioSize = ""; 
         let currentHistoryDownloadId = "";
         let currentHistoryDownloadUrl = ""; 
         let currentHistoryDownloadTitle = "";
@@ -406,9 +406,10 @@
         let activeVideoElement = null; 
         let downloadedVideos = [];
 
-        let activeTaskId = "";
+        let activeTaskId = localStorage.getItem('activeTaskId') || ""; 
         let progressInterval = null;
-        let isProgressFetching = false; // রেসপন্সিভ ফিক্স
+        let isProgressFetching = false; 
+        let currentDownloadBtn = null; 
 
         const videoObserver = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
@@ -440,12 +441,33 @@
 
         document.addEventListener("DOMContentLoaded", () => {
             loadToggles(); loadProfileData(); checkDefaultQuality(); checkNotifications(); loadHomeFeed();
+            
+            if(activeTaskId) { resumeBackgroundDownload(); }
+
             if(localStorage.getItem('autoPaste') === 'true') {
                 navigator.clipboard.readText().then(text => {
                     if(text && (text.includes('http://') || text.includes('https://'))) { document.getElementById('urlInput').value = text; showToast("Auto-Pasted Link!"); }
                 }).catch(()=>{});
             }
         });
+
+        async function resumeBackgroundDownload() {
+            document.getElementById('progressModal').style.display = 'flex';
+            document.getElementById('modalTitle').innerText = "Resuming...";
+            document.getElementById('modalSubtitle').innerText = "Checking download status...";
+            
+            const progRes = await fetch(`/api/progress/${activeTaskId}`); 
+            const prog = await progRes.json();
+            
+            if(prog.status === 'error' || prog.status === 'done' || prog.status === 'cancelled') {
+                localStorage.removeItem('activeTaskId'); activeTaskId = "";
+                document.getElementById('progressModal').style.display = 'none';
+                if(prog.status === 'done') showToast("Download finished in background!");
+                return;
+            }
+            
+            trackProgress(activeTaskId, null, null);
+        }
 
         function checkNotifications() {
             fetch('/api/history').then(res => res.json()).then(data => {
@@ -556,7 +578,19 @@
         function closeClearModal() { document.getElementById('clearModal').style.display = 'none'; }
         function openCacheModal() { closeSettingsModal(); document.getElementById('cacheModal').style.display = 'flex'; }
         function closeCacheModal() { document.getElementById('cacheModal').style.display = 'none'; }
-        function confirmClearCache() { closeCacheModal(); showToast("Cache cleared successfully!"); }
+        
+        async function confirmClearCache() { 
+            closeCacheModal(); 
+            showToast("Clearing cache...");
+            try {
+                const res = await fetch('/api/clear-cache', { method: 'POST' });
+                if(res.ok) {
+                    showToast("Cache cleared successfully!");
+                    loadHomeFeed(); loadHistory(); loadProfileData(); checkNotifications();
+                }
+            } catch(e) { showToast("Error clearing cache", true); }
+        }
+
         function openQualityModal() { document.getElementById('qualityModal').style.display = 'flex'; }
         function closeQualityModal() { document.getElementById('qualityModal').style.display = 'none'; }
         function closeDetailsModal() { document.getElementById('detailsModal').style.display = 'none'; }
@@ -631,6 +665,8 @@
 
         function renderResolutionList(type) {
             const list = document.getElementById('resList'); list.innerHTML = '';
+            const defaultQ = localStorage.getItem('defaultQuality') || 'Highest Available';
+
             if (type === 'audio') {
                 const sizeMB = currentAudioSize ? (currentAudioSize / (1024 * 1024)).toFixed(1) + ' MB' : 'High Quality';
                 const item = document.createElement('div'); item.className = 'list-item';
@@ -646,8 +682,11 @@
                         ? `<button class="btn-dl completed"><i class="fa-solid fa-check"></i> Downloaded</button>`
                         : `<button class="btn-dl" onclick="startDownload('${fmt.height}', this)"><i class="fa-solid fa-arrow-down"></i> Download</button>`;
 
+                    const isDefault = fmt.resolution === defaultQ;
+                    const defaultBadge = isDefault ? `<span class="default-badge">DEFAULT</span>` : '';
+
                     const item = document.createElement('div'); item.className = 'list-item';
-                    item.innerHTML = `<div class="item-left"><div class="quality-tag">${fmt.resolution}</div><div class="item-meta"><span class="format">${fmt.ext.toUpperCase()} Video</span><span class="size">${sizeMB}</span></div></div>${btnHTML}`;
+                    item.innerHTML = `<div class="item-left"><div class="quality-tag">${fmt.resolution} ${defaultBadge}</div><div class="item-meta"><span class="format">${fmt.ext.toUpperCase()} Video</span><span class="size">${sizeMB}</span></div></div>${btnHTML}`;
                     list.appendChild(item);
                 });
             }
@@ -685,10 +724,17 @@
         function checkDefaultQuality() {
             const quality = localStorage.getItem('defaultQuality') || 'Highest Available';
             document.getElementById('defaultQualityText').innerText = quality;
+            document.querySelectorAll('.quality-option').forEach(el => {
+                el.classList.remove('selected'); el.querySelector('i').style.opacity = '0';
+                if(el.innerText.includes(quality)) { el.classList.add('selected'); el.querySelector('i').style.opacity = '1'; }
+            });
         }
         function selectQuality(quality) {
             localStorage.setItem('defaultQuality', quality); document.getElementById('defaultQualityText').innerText = quality;
             checkDefaultQuality(); closeQualityModal(); showToast("Quality set to " + quality);
+            if(document.getElementById('formatList').innerHTML !== '') {
+                renderFormats(document.querySelector('.tab.active').innerText.toLowerCase());
+            }
         }
         function switchTab(tabId, element) {
             document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active')); element.classList.add('active');
@@ -738,7 +784,7 @@
                 const data = await response.json(); if (!response.ok) throw new Error(data.error);
                 
                 currentVideoUrl = url; currentVideoTitle = data.title; currentVideoThumb = data.thumbnail; currentVideoUploader = data.uploader; currentVideoAvatar = data.uploader_avatar; currentVideoViews = data.views; currentVideoDesc = data.description;
-                currentAudioSize = data.audio_size; // অডিও সাইজ
+                currentAudioSize = data.audio_size; 
                 
                 const hist = await (await fetch('/api/history')).json();
                 downloadedVideos = hist.map(i => `${i.title}_${i.resolution}`);
@@ -755,6 +801,8 @@
         
         function renderFormats(type) {
             const list = document.getElementById('formatList'); list.innerHTML = '';
+            const defaultQ = localStorage.getItem('defaultQuality') || 'Highest Available';
+
             if (type === 'audio') {
                 const sizeMB = currentAudioSize ? (currentAudioSize / (1024 * 1024)).toFixed(1) + ' MB' : 'High Quality';
                 const isDownloaded = downloadedVideos.includes(`${currentVideoTitle}_Audio`);
@@ -775,8 +823,11 @@
                         ? `<button class="btn-dl completed"><i class="fa-solid fa-check"></i> Downloaded</button>`
                         : `<button class="btn-dl" onclick="startDownload('${fmt.height}', this)"><i class="fa-solid fa-arrow-down"></i> Download</button>`;
 
+                    const isDefault = fmt.resolution === defaultQ;
+                    const defaultBadge = isDefault ? `<span class="default-badge">DEFAULT</span>` : '';
+
                     const item = document.createElement('div'); item.className = 'list-item';
-                    item.innerHTML = `<div class="item-left"><div class="quality-tag">${fmt.resolution}</div><div class="item-meta"><span class="format">${fmt.ext.toUpperCase()} Video</span><span class="size">${sizeMB}</span></div></div>${btnHTML}`;
+                    item.innerHTML = `<div class="item-left"><div class="quality-tag">${fmt.resolution} ${defaultBadge}</div><div class="item-meta"><span class="format">${fmt.ext.toUpperCase()} Video</span><span class="size">${sizeMB}</span></div></div>${btnHTML}`;
                     list.appendChild(item);
                 });
             }
@@ -800,81 +851,126 @@
             if(activeTaskId) {
                 await fetch(`/api/cancel-download/${activeTaskId}`, { method: 'POST' });
             }
+            // এখানে activeTaskId বা progressInterval ক্লিয়ার করা যাবে না। 
+            // ব্যাকগ্রাউন্ড থেকে 'cancelled' স্ট্যাটাস আসার পর trackProgress ফাংশন নিজেই সব রিসেট করবে।
             document.getElementById('progressModal').style.display = 'none';
             showToast("Cancelling download...");
+        }
+
+        async function trackProgress(taskId, btnElement, actualHeight) {
+            activeTaskId = taskId;
+            localStorage.setItem('activeTaskId', activeTaskId); // Background DL
+            if(btnElement) currentDownloadBtn = btnElement;
+        
+            isProgressFetching = false; 
+            document.getElementById('progressModal').style.display = 'flex'; 
+            document.getElementById('progressFill').style.width = "0%"; 
+            document.getElementById('circlePercent').innerText = "0%";
+            document.getElementById('modalTitle').innerText = actualHeight === 'audio' ? "Downloading Audio" : "Downloading Video";
+            
+            const isTurbo = document.getElementById('turboSpeedToggle').checked;
+            document.getElementById('modalSubtitle').innerText = isTurbo ? "Turbo Speed Activated 🚀" : "Connecting...";
+            
+            if(progressInterval) clearInterval(progressInterval);
+
+            progressInterval = setInterval(async () => {
+                if(!activeTaskId || isProgressFetching) return; 
+                
+                isProgressFetching = true;
+                try {
+                    const progRes = await fetch(`/api/progress/${activeTaskId}`); 
+                    const prog = await progRes.json();
+                    
+                    if (prog.status === 'downloading') {
+                        document.getElementById('progressFill').style.width = prog.percent + '%'; document.getElementById('circlePercent').innerText = prog.percent + '%';
+                        document.getElementById('statSize').innerText = `${prog.downloaded_mb} MB`; document.getElementById('statSpeed').innerText = prog.speed + ' MB/s';
+                        let subText = `Total: ${prog.total_mb > 0 ? prog.total_mb : '?'} MB`; if(isTurbo) subText += " (Turbo 🚀)";
+                        document.getElementById('modalSubtitle').innerText = subText;
+                        if(prog.eta) {
+                            const m = Math.floor(prog.eta/60);
+                            const s = Math.round(prog.eta%60);
+                            document.getElementById('statEta').innerText = `${m}m ${s}s`;
+                        } else {
+                            document.getElementById('statEta').innerText = '--';
+                        }
+                    } else if (prog.status === 'merging') {
+                        document.getElementById('progressFill').style.width = '100%'; document.getElementById('circlePercent').innerText = "100%";
+                        document.getElementById('modalTitle').innerText = "Processing"; document.getElementById('modalSubtitle').innerText = "Merging..."; document.getElementById('statSpeed').innerText = "--";
+                    } else if (prog.status === 'done') {
+                        clearInterval(progressInterval); 
+                        localStorage.removeItem('activeTaskId'); 
+                        const finishedTaskId = activeTaskId;
+                        activeTaskId = "";
+                        currentDownloadBtn = null;
+                        
+                        document.getElementById('progressFill').style.width = '100%'; document.getElementById('circlePercent').innerText = "100%"; document.getElementById('modalTitle').innerText = "Success";
+                        
+                        if(actualHeight) downloadedVideos.push(`${currentVideoTitle}_${actualHeight === 'audio' ? 'Audio' : actualHeight + 'p'}`);
+                        
+                        setTimeout(() => {
+                            window.location.href = `/api/get-file/${finishedTaskId}`;
+                            setTimeout(() => {
+                                document.getElementById('progressModal').style.display = 'none'; showToast("Download Complete!");
+                                if(btnElement) { btnElement.innerHTML = '<i class="fa-solid fa-arrow-down"></i> Download'; btnElement.disabled = false; }
+                                loadHomeFeed(); checkNotifications(); 
+                                if(document.getElementById('formatList').innerHTML !== '') {
+                                    renderFormats(document.querySelector('.tab.active').innerText.toLowerCase());
+                                }
+                            }, 1500);
+                        }, 500);
+                    } else if (prog.status === 'cancelled') {
+                        clearInterval(progressInterval); 
+                        localStorage.removeItem('activeTaskId'); activeTaskId = "";
+                        
+                        document.getElementById('progressModal').style.display = 'none'; showToast("Download Cancelled", true);
+                        
+                        // বাটনটি আগের অবস্থায় ফিরিয়ে আনা
+                        if(currentDownloadBtn) {
+                            currentDownloadBtn.innerHTML = '<i class="fa-solid fa-arrow-down"></i> Download';
+                            currentDownloadBtn.disabled = false;
+                            currentDownloadBtn = null;
+                        } else {
+                            // যদি সরাসরি বাটনটি না পাওয়া যায়, তবে লিস্ট রি-রেন্ডার করা
+                            if(document.getElementById('formatList').innerHTML !== '') {
+                                renderFormats(document.querySelector('.tab.active').innerText.toLowerCase());
+                            }
+                        }
+                    } else if (prog.status === 'error') {
+                        clearInterval(progressInterval); 
+                        localStorage.removeItem('activeTaskId'); activeTaskId = "";
+                        
+                        document.getElementById('progressModal').style.display = 'none'; showToast("Error: " + prog.error, true);
+                        
+                        if(currentDownloadBtn) {
+                            currentDownloadBtn.innerHTML = '<i class="fa-solid fa-arrow-down"></i> Download';
+                            currentDownloadBtn.disabled = false;
+                            currentDownloadBtn = null;
+                        } else {
+                            if(document.getElementById('formatList').innerHTML !== '') {
+                                renderFormats(document.querySelector('.tab.active').innerText.toLowerCase());
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.log("Progress fetch error", err);
+                } finally {
+                    isProgressFetching = false;
+                }
+            }, 1000); 
         }
 
         async function startDownload(height, btnElement) {
             closeResolutionModal();
             const originalText = btnElement.innerHTML; btnElement.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>'; btnElement.disabled = true;
-            const saveThumb = document.getElementById('saveThumbToggle').checked; const isTurbo = document.getElementById('turboSpeedToggle').checked;
-            
+            const saveThumb = document.getElementById('saveThumbToggle').checked; 
+            const isTurbo = document.getElementById('turboSpeedToggle').checked;
+
             try {
-                const response = await fetch('/api/start-download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: currentVideoUrl, height: height, title: currentVideoTitle, thumb: currentVideoThumb, uploader: currentVideoUploader, avatar: currentVideoAvatar, views: currentVideoViews, description: currentVideoDesc, save_thumb: saveThumb }) });
+                const response = await fetch('/api/start-download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: currentVideoUrl, height: height, title: currentVideoTitle, thumb: currentVideoThumb, uploader: currentVideoUploader, avatar: currentVideoAvatar, views: currentVideoViews, description: currentVideoDesc, save_thumb: saveThumb, turbo_speed: isTurbo }) });
                 const data = await response.json(); if (!response.ok) throw new Error(data.error);
                 
-                activeTaskId = data.task_id;
-                isProgressFetching = false; // রিসেট ফ্ল্যাগ
-                document.getElementById('progressModal').style.display = 'flex'; 
-                document.getElementById('progressFill').style.width = "0%"; 
-                document.getElementById('circlePercent').innerText = "0%";
-                document.getElementById('modalTitle').innerText = height === 'audio' ? "Downloading Audio" : "Downloading Video";
-                document.getElementById('modalSubtitle').innerText = isTurbo ? "Turbo Speed Activated 🚀" : "Connecting...";
-                
-                progressInterval = setInterval(async () => {
-                    if(!activeTaskId || isProgressFetching) return; // ওভারল্যাপিং রিকোয়েস্ট ব্লক করা হলো
-                    
-                    isProgressFetching = true;
-                    try {
-                        const progRes = await fetch(`/api/progress/${activeTaskId}`); 
-                        const prog = await progRes.json();
-                        
-                        if (prog.status === 'downloading') {
-                            document.getElementById('progressFill').style.width = prog.percent + '%'; document.getElementById('circlePercent').innerText = prog.percent + '%';
-                            document.getElementById('statSize').innerText = `${prog.downloaded_mb} MB`; document.getElementById('statSpeed').innerText = prog.speed + ' MB/s';
-                            let subText = `Total: ${prog.total_mb > 0 ? prog.total_mb : '?'} MB`; if(isTurbo) subText += " (Turbo 🚀)";
-                            document.getElementById('modalSubtitle').innerText = subText;
-                            // ETA ফিক্স
-                            if(prog.eta) {
-                                const m = Math.floor(prog.eta/60);
-                                const s = Math.round(prog.eta%60);
-                                document.getElementById('statEta').innerText = `${m}m ${s}s`;
-                            } else {
-                                document.getElementById('statEta').innerText = '--';
-                            }
-                        } else if (prog.status === 'merging') {
-                            document.getElementById('progressFill').style.width = '100%'; document.getElementById('circlePercent').innerText = "100%";
-                            document.getElementById('modalTitle').innerText = "Processing"; document.getElementById('modalSubtitle').innerText = "Merging..."; document.getElementById('statSpeed').innerText = "--";
-                        } else if (prog.status === 'done') {
-                            clearInterval(progressInterval); activeTaskId = "";
-                            document.getElementById('progressFill').style.width = '100%'; document.getElementById('circlePercent').innerText = "100%"; document.getElementById('modalTitle').innerText = "Success";
-                            
-                            downloadedVideos.push(`${currentVideoTitle}_${height === 'audio' ? 'Audio' : height + 'p'}`);
-                            
-                            setTimeout(() => {
-                                window.location.href = `/api/get-file/${data.task_id}`;
-                                setTimeout(() => {
-                                    document.getElementById('progressModal').style.display = 'none'; showToast("Download Complete!");
-                                    btnElement.innerHTML = originalText; btnElement.disabled = false; 
-                                    loadHomeFeed(); checkNotifications(); 
-                                    renderFormats(document.querySelector('.tab.active').innerText.toLowerCase());
-                                }, 1500);
-                            }, 500);
-                        } else if (prog.status === 'cancelled') {
-                            clearInterval(progressInterval); activeTaskId = "";
-                            document.getElementById('progressModal').style.display = 'none'; showToast("Download Cancelled", true);
-                            btnElement.innerHTML = originalText; btnElement.disabled = false; 
-                        } else if (prog.status === 'error') {
-                            clearInterval(progressInterval); activeTaskId = "";
-                            document.getElementById('progressModal').style.display = 'none'; showToast("Error: " + prog.error, true);
-                            btnElement.innerHTML = originalText; btnElement.disabled = false;
-                        }
-                    } catch (err) {
-                        console.log("Progress fetch error", err);
-                    } finally {
-                        isProgressFetching = false;
-                    }
-                }, 1000); // ৮০০ থেকে ১০০০ মিলি সেকেন্ড করা হলো
+                trackProgress(data.task_id, btnElement, height);
+
             } catch (error) { showToast("Error: " + error.message, true); btnElement.innerHTML = originalText; btnElement.disabled = false; }
         }
     </script>

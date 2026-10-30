@@ -13,6 +13,7 @@ import json
 import urllib.parse
 import urllib.request
 import ssl
+import shutil
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
@@ -112,17 +113,14 @@ def get_info():
                 vcodec = f.get('vcodec')
                 acodec = f.get('acodec')
                 
-                # Audio Size Calculation
                 if acodec != 'none' and vcodec == 'none':
                     fsize = f.get('filesize') or f.get('filesize_approx', 0)
                     if not fsize:
                         tbr = f.get('tbr') or f.get('abr')
                         if tbr and duration:
                             fsize = int((tbr * 1000 / 8) * duration)
-                    if fsize > audio_size:
-                        audio_size = fsize
+                    if fsize > audio_size: audio_size = fsize
                 
-                # Video Formats
                 if height and vcodec != 'none':
                     label = f"{height}p"
                     if label not in seen:
@@ -141,19 +139,13 @@ def get_info():
             uploader_avatar = info.get('uploader_avatar') or info.get('channel_thumbnail') or info.get('thumbnail', '')
 
             return jsonify({
-                "title": info.get('title', 'Unknown'), 
-                "thumbnail": info.get('thumbnail', ''), 
-                "duration": info.get('duration_string', ''), 
-                "formats": formats, 
-                "audio_size": audio_size,
-                "uploader": info.get('uploader', 'Channel'), 
-                "uploader_avatar": uploader_avatar,
-                "views": views, 
-                "description": info.get('description', '')
+                "title": info.get('title', 'Unknown'), "thumbnail": info.get('thumbnail', ''), "duration": info.get('duration_string', ''), 
+                "formats": formats, "audio_size": audio_size, "uploader": info.get('uploader', 'Channel'), 
+                "uploader_avatar": uploader_avatar, "views": views, "description": info.get('description', '')
             })
     except Exception as e: return jsonify({"error": str(e)}), 500
 
-def download_worker(tid, url, height, title, thumb, uploader, avatar, views, desc, save_thumb):
+def download_worker(tid, url, height, title, thumb, uploader, avatar, views, desc, save_thumb, turbo_speed):
     outtmpl = str(DOWNLOAD_DIR / f"{tid}_%(title).100B.%(ext)s")
     
     def hook(d):
@@ -165,8 +157,19 @@ def download_worker(tid, url, height, title, thumb, uploader, avatar, views, des
         elif d['status'] == 'finished':
             tasks[tid].update({'status': 'merging', 'percent': 100})
 
-    opts = {'outtmpl': outtmpl, 'quiet': True, 'no_warnings': True, 'progress_hooks': [hook], 'nocheckcertificate': True}
+    opts = {
+        'outtmpl': outtmpl, 'quiet': True, 'no_warnings': True, 'progress_hooks': [hook], 'nocheckcertificate': True,
+        'retries': 50, # নেটওয়ার্ক ফিরে আসার জন্য অপেক্ষা করবে
+        'fragment_retries': 50,
+        'socket_timeout': 30,
+        'abort_on_error': False
+    }
+    
     if FFMPEG_PATH and os.path.exists(FFMPEG_PATH): opts['ffmpeg_location'] = FFMPEG_PATH
+
+    # Real Turbo Speed
+    if turbo_speed:
+        opts['concurrent_fragment_downloads'] = 8
 
     if height == 'audio':
         opts['format'] = 'bestaudio[ext=m4a]/bestaudio'
@@ -222,7 +225,7 @@ def start_download():
     
     tid = str(uuid.uuid4())[:8]
     tasks[tid] = {'status': 'starting', 'percent': 0, 'filename': ''}
-    threading.Thread(target=download_worker, args=(tid, url, d.get('height'), d.get('title', 'Video'), d.get('thumb', ''), d.get('uploader', 'Channel'), d.get('avatar', ''), d.get('views', '0'), d.get('description', ''), d.get('save_thumb', False)), daemon=True).start()
+    threading.Thread(target=download_worker, args=(tid, url, d.get('height'), d.get('title', 'Video'), d.get('thumb', ''), d.get('uploader', 'Channel'), d.get('avatar', ''), d.get('views', '0'), d.get('description', ''), d.get('save_thumb', False), d.get('turbo_speed', False)), daemon=True).start()
     return jsonify({"task_id": tid})
 
 @app.route('/api/progress/<tid>', methods=['GET'])
@@ -265,6 +268,19 @@ def clear_history():
     save_history_to_file()
     return jsonify({"status": "success"})
 
+@app.route('/api/clear-cache', methods=['POST'])
+def clear_cache():
+    verify_token()
+    try:
+        # ডাউনলোড ফোল্ডারের সব ফাইল ডিলিট করা
+        for f in DOWNLOAD_DIR.iterdir():
+            if f.is_file():
+                f.unlink()
+        with history_lock: download_history.clear()
+        save_history_to_file()
+        return jsonify({"status": "success"})
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
 @app.route('/api/delete-video', methods=['POST'])
 def delete_video():
     verify_token()
@@ -298,6 +314,5 @@ def get_file(tid):
         if i['task_id'] == tid: title, res = i['title'], i['resolution']; break
     return send_file(fpath, as_attachment=True, conditional=True, download_name=f"[{res}] {get_safe_filename(title)}.{ext}")
 
-# ক্র্যাশ বা হ্যাং এড়াতে threaded=True দেওয়া হলো
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False, threaded=True)
