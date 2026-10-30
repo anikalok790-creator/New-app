@@ -38,8 +38,7 @@ def get_ffmpeg_path():
     ffmpeg_file = BIN_DIR / "ffmpeg"
     if ffmpeg_file.exists():
         return str(ffmpeg_file)
-    
-    print("Downloading ffmpeg binary for Android arm64...")
+    print("Downloading ffmpeg binary...")
     url = "https://github.com/hzw1199/Android-FFmpeg-Prebuilt/raw/main/ffmpeg-9.0/bin/ffmpeg"
     try:
         ctx = ssl.create_default_context()
@@ -49,18 +48,16 @@ def get_ffmpeg_path():
         with urllib.request.urlopen(req, context=ctx) as response, open(ffmpeg_file, 'wb') as out_file:
             out_file.write(response.read())
         os.chmod(ffmpeg_file, 0o755)
-        print("FFmpeg downloaded and made executable.")
         return str(ffmpeg_file)
     except Exception as e:
-        print(f"Failed to download ffmpeg: {e}")
+        print(f"Failed: {e}")
         return None
 
 FFMPEG_PATH = get_ffmpeg_path()
 
 def verify_token():
     token = request.headers.get('X-App-Token')
-    if token != APP_SECRET_TOKEN:
-        abort(403)
+    if token != APP_SECRET_TOKEN: abort(403)
 
 def save_history_to_file():
     try:
@@ -106,19 +103,41 @@ def get_info():
             info = ydl.extract_info(url, download=False)
             formats = []
             seen = set()
+            
+            duration = info.get('duration', 0)
+            audio_size = 0
+            
             for f in info.get('formats', []):
                 height = f.get('height')
                 vcodec = f.get('vcodec')
+                acodec = f.get('acodec')
+                
+                # Audio Size Calculation
+                if acodec != 'none' and vcodec == 'none':
+                    fsize = f.get('filesize') or f.get('filesize_approx', 0)
+                    if not fsize:
+                        tbr = f.get('tbr') or f.get('abr')
+                        if tbr and duration:
+                            fsize = int((tbr * 1000 / 8) * duration)
+                    if fsize > audio_size:
+                        audio_size = fsize
+                
+                # Video Formats
                 if height and vcodec != 'none':
                     label = f"{height}p"
                     if label not in seen:
                         seen.add(label)
-                        formats.append({'resolution': label, 'height': height, 'ext': f.get('ext', 'mp4'), 'filesize': f.get('filesize') or f.get('filesize_approx', 0)})
+                        filesize = f.get('filesize') or f.get('filesize_approx', 0)
+                        if not filesize:
+                            tbr = f.get('tbr') or f.get('vbr')
+                            if tbr and duration:
+                                filesize = int((tbr * 1000 / 8) * duration)
+                        formats.append({'resolution': label, 'height': height, 'ext': f.get('ext', 'mp4'), 'filesize': filesize})
+            
             formats.sort(key=lambda x: x['height'], reverse=True)
             vc = info.get('view_count', 0)
             views = f"{vc/1000000:.1f}M views" if vc >= 1000000 else (f"{vc/1000:.1f}K views" if vc >= 1000 else f"{vc} views")
             
-            # Channel Avatar Extraction
             uploader_avatar = info.get('uploader_avatar') or info.get('channel_thumbnail') or info.get('thumbnail', '')
 
             return jsonify({
@@ -126,8 +145,9 @@ def get_info():
                 "thumbnail": info.get('thumbnail', ''), 
                 "duration": info.get('duration_string', ''), 
                 "formats": formats, 
+                "audio_size": audio_size,
                 "uploader": info.get('uploader', 'Channel'), 
-                "uploader_avatar": uploader_avatar, # Added Avatar
+                "uploader_avatar": uploader_avatar,
                 "views": views, 
                 "description": info.get('description', '')
             })
@@ -137,9 +157,7 @@ def download_worker(tid, url, height, title, thumb, uploader, avatar, views, des
     outtmpl = str(DOWNLOAD_DIR / f"{tid}_%(title).100B.%(ext)s")
     
     def hook(d):
-        if cancel_flags.get(tid):
-            raise yt_dlp.utils.DownloadCancelled()
-            
+        if cancel_flags.get(tid): raise yt_dlp.utils.DownloadCancelled()
         if d['status'] == 'downloading':
             total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
             dl = d.get('downloaded_bytes', 0)
@@ -148,9 +166,7 @@ def download_worker(tid, url, height, title, thumb, uploader, avatar, views, des
             tasks[tid].update({'status': 'merging', 'percent': 100})
 
     opts = {'outtmpl': outtmpl, 'quiet': True, 'no_warnings': True, 'progress_hooks': [hook], 'nocheckcertificate': True}
-
-    if FFMPEG_PATH and os.path.exists(FFMPEG_PATH):
-        opts['ffmpeg_location'] = FFMPEG_PATH
+    if FFMPEG_PATH and os.path.exists(FFMPEG_PATH): opts['ffmpeg_location'] = FFMPEG_PATH
 
     if height == 'audio':
         opts['format'] = 'bestaudio[ext=m4a]/bestaudio'
@@ -162,7 +178,6 @@ def download_worker(tid, url, height, title, thumb, uploader, avatar, views, des
 
     try:
         with yt_dlp.YoutubeDL(opts) as ydl: ydl.extract_info(url, download=True)
-        
         candidates = [f for f in DOWNLOAD_DIR.glob(f"{tid}_*") if f.suffix.lower() in MEDIA_EXTS]
         candidates.sort(key=lambda p: p.stat().st_size, reverse=True)
         if not candidates: raise Exception("Download failed")
@@ -172,17 +187,10 @@ def download_worker(tid, url, height, title, thumb, uploader, avatar, views, des
 
         with history_lock:
             download_history.append({
-                'task_id': tid, 
-                'title': title, 
-                'filename': os.path.basename(filename), 
-                'thumbnail': thumb, 
-                'uploader': uploader, 
-                'uploader_avatar': avatar, # Save Avatar
+                'task_id': tid, 'title': title, 'filename': os.path.basename(filename), 
+                'thumbnail': thumb, 'uploader': uploader, 'uploader_avatar': avatar, 
                 'resolution': 'Audio' if height == 'audio' else f"{height}p", 
-                'time': time.strftime("%Y-%m-%d %H:%M"), 
-                'views': views, 
-                'description': desc,
-                'original_url': url
+                'time': time.strftime("%Y-%m-%d %H:%M"), 'views': views, 'description': desc, 'original_url': url
             })
         save_history_to_file()
 
@@ -236,21 +244,12 @@ def get_local_videos():
         fallback_title = parts[1] if len(parts) > 1 else f.stem
         is_audio = f.suffix.lower() in AUDIO_EXTS and m.get('resolution') == 'Audio'
         orig_url = m.get('original_url', '')
-        
         vids.append({
-            'task_id': m.get('task_id', emb_id), 
-            'title': m.get('title') or fallback_title, 
-            'filename': f.name, 
-            'thumbnail': m.get('thumbnail', ''), 
-            'uploader': m.get('uploader', 'Unknown'), 
-            'uploader_avatar': m.get('uploader_avatar', ''), # Send Avatar to Frontend
-            'views': m.get('views', ''), 
-            'resolution': m.get('resolution', 'Audio' if is_audio else 'Local'), 
-            'description': m.get('description', ''), 
-            'time': m.get('time') or time.strftime('%Y-%m-%d %H:%M', time.localtime(f.stat().st_mtime)), 
-            'url': f"/api/stream/{urllib.parse.quote(f.name)}", 
-            'original_url': orig_url, 
-            'timestamp': f.stat().st_mtime
+            'task_id': m.get('task_id', emb_id), 'title': m.get('title') or fallback_title, 'filename': f.name, 
+            'thumbnail': m.get('thumbnail', ''), 'uploader': m.get('uploader', 'Unknown'), 'uploader_avatar': m.get('uploader_avatar', ''), 
+            'views': m.get('views', ''), 'resolution': m.get('resolution', 'Audio' if is_audio else 'Local'), 
+            'description': m.get('description', ''), 'time': m.get('time') or time.strftime('%Y-%m-%d %H:%M', time.localtime(f.stat().st_mtime)), 
+            'url': f"/api/stream/{urllib.parse.quote(f.name)}", 'original_url': orig_url, 'timestamp': f.stat().st_mtime
         })
     return jsonify(vids)
 
@@ -299,5 +298,6 @@ def get_file(tid):
         if i['task_id'] == tid: title, res = i['title'], i['resolution']; break
     return send_file(fpath, as_attachment=True, conditional=True, download_name=f"[{res}] {get_safe_filename(title)}.{ext}")
 
+# ক্র্যাশ বা হ্যাং এড়াতে threaded=True দেওয়া হলো
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False, threaded=True)

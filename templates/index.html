@@ -40,11 +40,8 @@
         .audio-feed-wrapper audio { width: 100%; outline: none; }
         .audio-icon-large { font-size: 3rem; color: var(--primary); margin-bottom: 15px; }
         .feed-info { display: flex; gap: 12px; padding: 12px 16px; }
-        
-        /* Modified Feed Avatar to handle images */
         .feed-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--black); color: var(--primary); display: flex; justify-content: center; align-items: center; font-size: 1rem; font-weight: 700; flex-shrink: 0; overflow: hidden; }
         .feed-avatar img { width: 100%; height: 100%; object-fit: cover; }
-        
         .feed-text { flex: 1; min-width: 0; }
         .feed-text h3 { font-size: 1rem; font-weight: 600; line-height: 1.4; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
         .feed-text p { font-size: 0.8rem; color: var(--text-muted); font-weight: 500; }
@@ -56,9 +53,7 @@
         #emptyState { display: flex; flex-direction: column; align-items: center; justify-content: center; height: calc(100vh - 190px); text-align: center; color: var(--text-muted); position: relative; overflow: hidden; }
         .radar-container { position: relative; width: 220px; height: 220px; display: flex; justify-content: center; align-items: center; margin-bottom: 20px; }
         .ring { position: absolute; border: 2px solid rgba(250, 204, 21, 0.2); border-radius: 50%; animation: pulseRing 3s infinite cubic-bezier(0.215, 0.61, 0.355, 1); opacity: 0; }
-        .ring:nth-child(1) { animation-delay: 0s; }
-        .ring:nth-child(2) { animation-delay: 1s; }
-        .ring:nth-child(3) { animation-delay: 2s; }
+        .ring:nth-child(1) { animation-delay: 0s; } .ring:nth-child(2) { animation-delay: 1s; } .ring:nth-child(3) { animation-delay: 2s; }
         @keyframes pulseRing { 0% { width: 60px; height: 60px; opacity: 0.8; } 100% { width: 200px; height: 200px; opacity: 0; border-color: rgba(250, 204, 21, 0); } }
         .orbit { position: absolute; width: 100%; height: 100%; animation: rotateOrbit 8s linear infinite; }
         .orbit::before, .orbit::after { content: ''; position: absolute; border-radius: 50%; background: var(--black); box-shadow: 0 0 10px rgba(0,0,0,0.2); }
@@ -88,8 +83,13 @@
         .item-meta { display: flex; flex-direction: column; min-width: 0; }
         .item-meta .format { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .item-meta .size { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
-        .btn-dl { flex-shrink: 0; background: var(--bg-surface); color: var(--text-main); border: none; padding: 8px 14px; border-radius: var(--radius-pill); font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: 0.2s; }
+        
+        /* Updated Button Style */
+        .btn-dl { flex-shrink: 0; background: var(--bg-surface); color: var(--text-main); border: none; padding: 8px 14px; border-radius: var(--radius-pill); font-size: 0.8rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: 0.2s; min-width: 115px; }
         .btn-dl:active { background: var(--primary); }
+        .btn-dl.completed { background: #E5E5E5; color: #A0A0A0; cursor: not-allowed; }
+        .btn-dl.completed:active { background: #E5E5E5; }
+
         .page-header { padding: 16px; font-size: 1.1rem; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
         .btn-clear { background: transparent; color: var(--text-muted); border: none; font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 5px; }
         .history-list { padding: 0 16px; display: flex; flex-direction: column; gap: 16px; }
@@ -186,7 +186,6 @@
         .sk-thumb { width: 100%; padding-top: 56.25%; background: var(--bg-surface); animation: pulse 1.5s infinite; }
         .sk-text { height: 16px; background: var(--bg-surface); border-radius: 4px; margin: 12px 16px 0 16px; width: 80%; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        
         .spinner-container { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 20px; }
         .spinner-container i { font-size: 2.5rem; color: var(--primary); animation: spin 1s linear infinite; margin-bottom: 15px; }
         .spinner-container p { color: var(--text-muted); font-weight: 500; font-size: 0.9rem; }
@@ -198,9 +197,7 @@
         <div class="logo"><div class="logo-icon"><i class="fa-solid fa-bolt"></i></div>SnapPro</div>
         <div class="header-icons">
             <i class="fa-solid fa-magnifying-glass" onclick="focusSearch()"></i>
-            <i class="fa-regular fa-bell" onclick="openNotifications()">
-                <div class="notif-badge" id="notifBadge">0</div>
-            </i>
+            <i class="fa-regular fa-bell" onclick="openNotifications()"><div class="notif-badge" id="notifBadge">0</div></i>
             <div class="header-avatar" id="headerAvatar" onclick="switchTab('profile', document.querySelectorAll('.nav-item')[3])">U</div>
         </div>
     </div>
@@ -219,17 +216,12 @@
                 <div class="radar-container">
                     <div class="ring"></div><div class="ring"></div><div class="ring"></div>
                     <div class="orbit"></div>
-                    <div class="orbit" style="animation-duration: 12s; animation-direction: reverse;">
-                        <div style="position:absolute; width:6px; height:6px; background:var(--black); border-radius:50%; top:20%; left:20%;"></div>
-                    </div>
+                    <div class="orbit" style="animation-duration: 12s; animation-direction: reverse;"><div style="position:absolute; width:6px; height:6px; background:var(--black); border-radius:50%; top:20%; left:20%;"></div></div>
                     <div class="main-icon-box"><i class="fa-solid fa-arrow-down"></i></div>
                 </div>
-                <h3>Ready to Download</h3>
-                <p>Paste a link above to get started.</p>
+                <h3>Ready to Download</h3><p>Paste a link above to get started.</p>
             </div>
-            <div id="skeleton" class="skeleton">
-                <div class="sk-thumb"></div><div class="sk-text"></div><div class="sk-text" style="width: 40%"></div>
-            </div>
+            <div id="skeleton" class="skeleton"><div class="sk-thumb"></div><div class="sk-text"></div><div class="sk-text" style="width: 40%"></div></div>
             <div id="videoInfo" class="video-card">
                 <div class="thumb-wrapper"><img id="vThumb" src="" alt="Thumbnail"><span id="vDuration" class="time-badge"></span></div>
                 <div class="video-details">
@@ -282,10 +274,7 @@
 
     <div id="notificationModal" class="modal-overlay">
         <div class="modal-box">
-            <div class="modal-header">
-                <h3>Activity <span id="notifTotalCount" class="count-badge">0</span></h3>
-                <i class="fa-solid fa-xmark modal-close" onclick="closeNotifications()"></i>
-            </div>
+            <div class="modal-header"><h3>Activity <span id="notifTotalCount" class="count-badge">0</span></h3><i class="fa-solid fa-xmark modal-close" onclick="closeNotifications()"></i></div>
             <div id="notifList" class="notification-list"></div>
         </div>
     </div>
@@ -307,22 +296,15 @@
 
     <div id="resolutionModal" class="modal-overlay">
         <div class="modal-box" style="max-height: 80vh; padding-bottom: 20px;">
-            <div class="modal-header">
-                <h3>Select Quality</h3>
-                <i class="fa-solid fa-xmark modal-close" onclick="closeResolutionModal()"></i>
-            </div>
-            <div id="resLoading" class="spinner-container" style="display: none;">
-                <i class="fa-solid fa-circle-notch"></i>
-                <p>Fetching available qualities...</p>
-            </div>
+            <div class="modal-header"><h3>Select Quality</h3><i class="fa-solid fa-xmark modal-close" onclick="closeResolutionModal()"></i></div>
+            <div id="resLoading" class="spinner-container" style="display: none;"><i class="fa-solid fa-circle-notch"></i><p>Fetching available qualities...</p></div>
             <div id="resList" class="download-list" style="overflow-y: auto; max-height: calc(80vh - 60px); display: none; padding-bottom: 20px;"></div>
         </div>
     </div>
 
     <div id="deleteModal" class="modal-overlay">
         <div class="modal-box confirm-box">
-            <div class="confirm-title" style="color:#DC2626;">Delete Video?</div>
-            <div class="confirm-text">Are you sure you want to permanently delete this video from your phone?</div>
+            <div class="confirm-title" style="color:#DC2626;">Delete Video?</div><div class="confirm-text">Are you sure you want to permanently delete this video from your phone?</div>
             <div class="confirm-actions"><button class="btn-confirm btn-cancel" onclick="closeDeleteModal()">Cancel</button><button class="btn-confirm btn-delete" onclick="confirmDelete()">Delete</button></div>
         </div>
     </div>
@@ -363,16 +345,14 @@
 
     <div id="clearModal" class="modal-overlay">
         <div class="modal-box confirm-box">
-            <div class="confirm-title">Clear Downloads History?</div>
-            <div class="confirm-text">This will remove all history records. Your downloaded files will still appear in the Home feed.</div>
+            <div class="confirm-title">Clear Downloads History?</div><div class="confirm-text">This will remove all history records. Your downloaded files will still appear in the Home feed.</div>
             <div class="confirm-actions"><button class="btn-confirm btn-cancel" onclick="closeClearModal()">Cancel</button><button class="btn-confirm btn-delete" onclick="confirmClearHistory()">Clear</button></div>
         </div>
     </div>
 
     <div id="cacheModal" class="modal-overlay">
         <div class="modal-box confirm-box">
-            <div class="confirm-title">Clear Cache?</div>
-            <div class="confirm-text">This will remove temporary files and free up space. Your download history will not be deleted.</div>
+            <div class="confirm-title">Clear Cache?</div><div class="confirm-text">This will remove temporary files and free up space. Your download history will not be deleted.</div>
             <div class="confirm-actions"><button class="btn-confirm btn-cancel" onclick="closeCacheModal()">Cancel</button><button class="btn-confirm btn-primary" onclick="confirmClearCache()">Clear Cache</button></div>
         </div>
     </div>
@@ -411,10 +391,11 @@
         let currentVideoTitle = "";
         let currentVideoThumb = "";
         let currentVideoUploader = "";
-        let currentVideoAvatar = ""; // New variable for avatar
+        let currentVideoAvatar = ""; 
         let currentVideoViews = "";
         let currentVideoDesc = "";
         let currentVideoUrl = "";
+        let currentAudioSize = ""; // নতুন ভ্যারিয়েবল
         let currentHistoryDownloadId = "";
         let currentHistoryDownloadUrl = ""; 
         let currentHistoryDownloadTitle = "";
@@ -423,9 +404,11 @@
         let currentPlayingFullscreenUrl = "";
         let globalMuteState = localStorage.getItem('globalMute') !== 'false'; 
         let activeVideoElement = null; 
+        let downloadedVideos = [];
 
         let activeTaskId = "";
         let progressInterval = null;
+        let isProgressFetching = false; // রেসপন্সিভ ফিক্স
 
         const videoObserver = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
@@ -496,11 +479,8 @@
                     metaHTML = `<p>${item.uploader} ${item.views ? '• ' + item.views : ''}</p>`;
                     const resText = item.resolution && item.resolution !== 'Local' ? `<p style="font-size:0.75rem; margin-top:4px; color:var(--primary); font-weight:700;">${item.resolution}</p>` : '';
                     
-                    // Channel Avatar Logic
                     let avatarContent = (item.uploader || 'V')[0].toUpperCase();
-                    if(item.uploader_avatar) {
-                        avatarContent = `<img src="${item.uploader_avatar}" alt="avatar">`;
-                    }
+                    if(item.uploader_avatar) { avatarContent = `<img src="${item.uploader_avatar}" alt="avatar">`; }
 
                     card.innerHTML = `${mediaHTML}<div class="feed-info"><div class="feed-avatar">${avatarContent}</div><div class="feed-text"><h3 onclick="event.stopPropagation(); showVideoDetailsById('${safeFilename}')">${item.title}</h3>${metaHTML}${resText}</div><div class="feed-actions"><div class="feed-more" onclick="event.stopPropagation(); showVideoDetailsById('${safeFilename}')"><i class="fa-solid fa-ellipsis-vertical"></i></div><div class="feed-delete" onclick="event.stopPropagation(); openDeleteModal('${safeFilename}', event)"><i class="fa-solid fa-trash-can"></i></div></div></div>`;
                     feedContainer.appendChild(card);
@@ -587,7 +567,6 @@
             currentHistoryDownloadId = item.task_id || item.filename; 
             currentHistoryDownloadTitle = item.title; 
             currentHistoryDownloadRes = item.resolution;
-            
             currentHistoryDownloadUrl = item.original_url || '';
             
             document.getElementById('vdThumb').src = item.thumbnail || '';
@@ -596,15 +575,11 @@
             document.getElementById('vdChannel').innerHTML = `<i class="fa-solid fa-circle-user"></i> ${channelInfo}`;
             
             let cleanDesc = item.description || '';
-            if(cleanDesc.includes(item.title)) {
-                cleanDesc = cleanDesc.replace(new RegExp(item.title, 'g'), '').trim();
-            }
+            if(cleanDesc.includes(item.title)) { cleanDesc = cleanDesc.replace(new RegExp(item.title, 'g'), '').trim(); }
             document.getElementById('vdDesc').innerText = cleanDesc || 'No description available for this video.';
             
             const btn = document.getElementById('vdDownloadBtn'); 
-            btn.disabled = false; 
-            btn.style.opacity = '1'; 
-            btn.innerHTML = '<i class="fa-solid fa-download"></i> Change Quality / Download Again';
+            btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = '<i class="fa-solid fa-download"></i> Change Quality / Download Again';
             document.getElementById('detailsModal').style.display = 'flex';
         }
 
@@ -613,14 +588,12 @@
             showVideoDetails({ title: currentVideoTitle, thumbnail: currentVideoThumb, uploader: currentVideoUploader, views: currentVideoViews, description: currentVideoDesc, filename: '', original_url: currentVideoUrl });
             const btn = document.getElementById('vdDownloadBtn'); 
             btn.innerHTML = '<i class="fa-solid fa-arrow-down"></i> Choose Resolution';
-            btn.style.opacity = '1'; 
-            btn.disabled = false;
+            btn.style.opacity = '1'; btn.disabled = false;
         }
 
         async function downloadFromDetailsModal() {
             if(currentHistoryDownloadUrl && currentHistoryDownloadUrl.startsWith('http')) {
                 closeDetailsModal(); 
-                
                 document.getElementById('resolutionModal').style.display = 'flex';
                 document.getElementById('resLoading').style.display = 'flex';
                 document.getElementById('resList').style.display = 'none';
@@ -635,10 +608,14 @@
                     currentVideoTitle = data.title;
                     currentVideoThumb = data.thumbnail;
                     currentVideoUploader = data.uploader;
-                    currentVideoAvatar = data.uploader_avatar; // Set Avatar
+                    currentVideoAvatar = data.uploader_avatar; 
                     currentVideoViews = data.views;
                     currentVideoDesc = data.description;
                     currentFormats = data.formats;
+                    currentAudioSize = data.audio_size; 
+                    
+                    const hist = await (await fetch('/api/history')).json();
+                    downloadedVideos = hist.map(i => `${i.title}_${i.resolution}`);
 
                     document.getElementById('resLoading').style.display = 'none';
                     document.getElementById('resList').style.display = 'block';
@@ -653,19 +630,24 @@
         }
 
         function renderResolutionList(type) {
-            const list = document.getElementById('resList'); 
-            list.innerHTML = '';
-            
+            const list = document.getElementById('resList'); list.innerHTML = '';
             if (type === 'audio') {
+                const sizeMB = currentAudioSize ? (currentAudioSize / (1024 * 1024)).toFixed(1) + ' MB' : 'High Quality';
                 const item = document.createElement('div'); item.className = 'list-item';
-                item.innerHTML = `<div class="item-left"><div class="quality-tag">Audio</div><div class="item-meta"><span class="format">M4A Format</span><span class="size">High Quality</span></div></div><button class="btn-dl" onclick="startDownload('audio', this)"><i class="fa-solid fa-arrow-down"></i> Download</button>`;
+                item.innerHTML = `<div class="item-left"><div class="quality-tag">Audio</div><div class="item-meta"><span class="format">M4A Format</span><span class="size">${sizeMB}</span></div></div><button class="btn-dl" onclick="startDownload('audio', this)"><i class="fa-solid fa-arrow-down"></i> Download</button>`;
                 list.appendChild(item);
             } else {
                 currentFormats.forEach(fmt => {
                     if(fmt.height === 'audio') return; 
                     const sizeMB = fmt.filesize ? (fmt.filesize / (1024 * 1024)).toFixed(1) + ' MB' : 'Auto';
+                    
+                    const isDownloaded = downloadedVideos.includes(`${currentVideoTitle}_${fmt.resolution}`);
+                    const btnHTML = isDownloaded 
+                        ? `<button class="btn-dl completed"><i class="fa-solid fa-check"></i> Downloaded</button>`
+                        : `<button class="btn-dl" onclick="startDownload('${fmt.height}', this)"><i class="fa-solid fa-arrow-down"></i> Download</button>`;
+
                     const item = document.createElement('div'); item.className = 'list-item';
-                    item.innerHTML = `<div class="item-left"><div class="quality-tag">${fmt.resolution}</div><div class="item-meta"><span class="format">${fmt.ext.toUpperCase()} Video</span><span class="size">${sizeMB}</span></div></div><button class="btn-dl" onclick="startDownload('${fmt.height}', this)"><i class="fa-solid fa-arrow-down"></i> Download</button>`;
+                    item.innerHTML = `<div class="item-left"><div class="quality-tag">${fmt.resolution}</div><div class="item-meta"><span class="format">${fmt.ext.toUpperCase()} Video</span><span class="size">${sizeMB}</span></div></div>${btnHTML}`;
                     list.appendChild(item);
                 });
             }
@@ -713,15 +695,35 @@
             document.querySelectorAll('.page').forEach(el => el.classList.remove('active')); document.getElementById(tabId + 'Page').classList.add('active');
             if (tabId === 'downloads') loadHistory(); if (tabId === 'profile') loadProfileData(); if (tabId === 'home') loadHomeFeed();
         }
-        function pasteLink() {
-            navigator.clipboard.readText().then(text => {
-                if(text) { document.getElementById('urlInput').value = text; showToast("Link pasted!"); }
-            }).catch(()=>showToast("Clipboard access denied", true));
+        
+        async function pasteLink() {
+            const input = document.getElementById('urlInput');
+            try {
+                const text = await navigator.clipboard.readText();
+                if(text) { 
+                    input.value = text; 
+                    showToast("Link pasted!"); 
+                } else {
+                    showToast("Clipboard is empty", true);
+                }
+            } catch (err) {
+                input.focus();
+                input.select(); 
+                try {
+                    const success = document.execCommand('paste');
+                    if(success) { showToast("Link pasted!"); }
+                    else { throw new Error("execCommand failed"); }
+                } catch(e) {
+                    showToast("Browser blocked auto-paste. Long-press the box to Paste.", true);
+                }
+            }
         }
+
         function showToast(message, isError = false) {
             const toast = document.getElementById('toast'); document.getElementById('toastMsg').innerText = message;
             toast.className = isError ? 'toast error show' : 'toast show'; setTimeout(() => { toast.className = 'toast'; }, 3000);
         }
+        
         async function fetchVideoInfo() {
             const url = document.getElementById('urlInput').value.trim();
             if (!url) return showToast("Please enter a URL", true);
@@ -730,10 +732,17 @@
             const searchBtn = document.getElementById('searchBtn'); searchBtn.disabled = true; searchBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
             document.getElementById('emptyState').style.display = 'none'; document.getElementById('videoFeed').style.display = 'none'; document.getElementById('videoInfo').style.display = 'none';
             document.getElementById('formatTabs').style.display = 'none'; document.getElementById('formatList').innerHTML = ''; document.getElementById('skeleton').style.display = 'block';
+            
             try {
                 const response = await fetch('/api/info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url }) });
                 const data = await response.json(); if (!response.ok) throw new Error(data.error);
+                
                 currentVideoUrl = url; currentVideoTitle = data.title; currentVideoThumb = data.thumbnail; currentVideoUploader = data.uploader; currentVideoAvatar = data.uploader_avatar; currentVideoViews = data.views; currentVideoDesc = data.description;
+                currentAudioSize = data.audio_size; // অডিও সাইজ
+                
+                const hist = await (await fetch('/api/history')).json();
+                downloadedVideos = hist.map(i => `${i.title}_${i.resolution}`);
+
                 document.getElementById('vThumb').src = data.thumbnail; document.getElementById('vTitle').innerText = data.title; document.getElementById('vDuration').innerText = data.duration;
                 document.getElementById('vUploader').innerHTML = `<i class="fa-solid fa-circle-user"></i> ${data.uploader}`; document.getElementById('vViews').innerText = data.views;
                 currentFormats = data.formats; document.getElementById('videoInfo').style.display = 'block'; document.getElementById('formatTabs').style.display = 'flex';
@@ -741,22 +750,38 @@
             } catch (error) { showToast(error.message, true); document.getElementById('emptyState').style.display = 'flex'; } 
             finally { searchBtn.disabled = false; searchBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i>'; document.getElementById('skeleton').style.display = 'none'; }
         }
+        
         function switchFormatTab(type, element) { document.querySelectorAll('.tab').forEach(el => el.classList.remove('active')); element.classList.add('active'); renderFormats(type); }
+        
         function renderFormats(type) {
             const list = document.getElementById('formatList'); list.innerHTML = '';
             if (type === 'audio') {
+                const sizeMB = currentAudioSize ? (currentAudioSize / (1024 * 1024)).toFixed(1) + ' MB' : 'High Quality';
+                const isDownloaded = downloadedVideos.includes(`${currentVideoTitle}_Audio`);
+                const btnHTML = isDownloaded 
+                    ? `<button class="btn-dl completed"><i class="fa-solid fa-check"></i> Downloaded</button>`
+                    : `<button class="btn-dl" onclick="startDownload('audio', this)"><i class="fa-solid fa-arrow-down"></i> Download</button>`;
+                
                 const item = document.createElement('div'); item.className = 'list-item';
-                item.innerHTML = `<div class="item-left"><div class="quality-tag">Audio</div><div class="item-meta"><span class="format">M4A Format</span><span class="size">High Quality</span></div></div><button class="btn-dl" onclick="startDownload('audio', this)"><i class="fa-solid fa-arrow-down"></i> Download</button>`;
+                item.innerHTML = `<div class="item-left"><div class="quality-tag">Audio</div><div class="item-meta"><span class="format">M4A Format</span><span class="size">${sizeMB}</span></div></div>${btnHTML}`;
                 list.appendChild(item);
             } else {
                 currentFormats.forEach(fmt => {
-                    if(fmt.height === 'audio') return; const sizeMB = fmt.filesize ? (fmt.filesize / (1024 * 1024)).toFixed(1) + ' MB' : 'Auto';
+                    if(fmt.height === 'audio') return; 
+                    const sizeMB = fmt.filesize ? (fmt.filesize / (1024 * 1024)).toFixed(1) + ' MB' : 'Auto';
+                    
+                    const isDownloaded = downloadedVideos.includes(`${currentVideoTitle}_${fmt.resolution}`);
+                    const btnHTML = isDownloaded 
+                        ? `<button class="btn-dl completed"><i class="fa-solid fa-check"></i> Downloaded</button>`
+                        : `<button class="btn-dl" onclick="startDownload('${fmt.height}', this)"><i class="fa-solid fa-arrow-down"></i> Download</button>`;
+
                     const item = document.createElement('div'); item.className = 'list-item';
-                    item.innerHTML = `<div class="item-left"><div class="quality-tag">${fmt.resolution}</div><div class="item-meta"><span class="format">${fmt.ext.toUpperCase()} Video</span><span class="size">${sizeMB}</span></div></div><button class="btn-dl" onclick="startDownload('${fmt.height}', this)"><i class="fa-solid fa-arrow-down"></i> Download</button>`;
+                    item.innerHTML = `<div class="item-left"><div class="quality-tag">${fmt.resolution}</div><div class="item-meta"><span class="format">${fmt.ext.toUpperCase()} Video</span><span class="size">${sizeMB}</span></div></div>${btnHTML}`;
                     list.appendChild(item);
                 });
             }
         }
+        
         async function loadHistory() {
             const list = document.getElementById('historyList'); list.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">Loading...</div>';
             try {
@@ -775,22 +800,21 @@
             if(activeTaskId) {
                 await fetch(`/api/cancel-download/${activeTaskId}`, { method: 'POST' });
             }
-            if(progressInterval) clearInterval(progressInterval);
             document.getElementById('progressModal').style.display = 'none';
-            showToast("Download Cancelled");
+            showToast("Cancelling download...");
         }
 
         async function startDownload(height, btnElement) {
             closeResolutionModal();
-
             const originalText = btnElement.innerHTML; btnElement.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>'; btnElement.disabled = true;
             const saveThumb = document.getElementById('saveThumbToggle').checked; const isTurbo = document.getElementById('turboSpeedToggle').checked;
+            
             try {
                 const response = await fetch('/api/start-download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: currentVideoUrl, height: height, title: currentVideoTitle, thumb: currentVideoThumb, uploader: currentVideoUploader, avatar: currentVideoAvatar, views: currentVideoViews, description: currentVideoDesc, save_thumb: saveThumb }) });
                 const data = await response.json(); if (!response.ok) throw new Error(data.error);
                 
                 activeTaskId = data.task_id;
-
+                isProgressFetching = false; // রিসেট ফ্ল্যাগ
                 document.getElementById('progressModal').style.display = 'flex'; 
                 document.getElementById('progressFill').style.width = "0%"; 
                 document.getElementById('circlePercent').innerText = "0%";
@@ -798,40 +822,59 @@
                 document.getElementById('modalSubtitle').innerText = isTurbo ? "Turbo Speed Activated 🚀" : "Connecting...";
                 
                 progressInterval = setInterval(async () => {
-                    if(!activeTaskId) return;
+                    if(!activeTaskId || isProgressFetching) return; // ওভারল্যাপিং রিকোয়েস্ট ব্লক করা হলো
                     
-                    const progRes = await fetch(`/api/progress/${activeTaskId}`); 
-                    const prog = await progRes.json();
-                    
-                    if (prog.status === 'downloading') {
-                        document.getElementById('progressFill').style.width = prog.percent + '%'; document.getElementById('circlePercent').innerText = prog.percent + '%';
-                        document.getElementById('statSize').innerText = `${prog.downloaded_mb} MB`; document.getElementById('statSpeed').innerText = prog.speed + ' MB/s';
-                        let subText = `Total: ${prog.total_mb > 0 ? prog.total_mb : '?'} MB`; if(isTurbo) subText += " (Turbo 🚀)";
-                        document.getElementById('modalSubtitle').innerText = subText;
-                        if(prog.eta) document.getElementById('statEta').innerText = `${Math.floor(prog.eta/60)}m ${prog.eta%60}s`;
-                    } else if (prog.status === 'merging') {
-                        document.getElementById('progressFill').style.width = '100%'; document.getElementById('circlePercent').innerText = "100%";
-                        document.getElementById('modalTitle').innerText = "Processing"; document.getElementById('modalSubtitle').innerText = "Merging..."; document.getElementById('statSpeed').innerText = "--";
-                    } else if (prog.status === 'done') {
-                        clearInterval(progressInterval); activeTaskId = "";
-                        document.getElementById('progressFill').style.width = '100%'; document.getElementById('circlePercent').innerText = "100%"; document.getElementById('modalTitle').innerText = "Success";
-                        setTimeout(() => {
-                            window.location.href = `/api/get-file/${data.task_id}`;
+                    isProgressFetching = true;
+                    try {
+                        const progRes = await fetch(`/api/progress/${activeTaskId}`); 
+                        const prog = await progRes.json();
+                        
+                        if (prog.status === 'downloading') {
+                            document.getElementById('progressFill').style.width = prog.percent + '%'; document.getElementById('circlePercent').innerText = prog.percent + '%';
+                            document.getElementById('statSize').innerText = `${prog.downloaded_mb} MB`; document.getElementById('statSpeed').innerText = prog.speed + ' MB/s';
+                            let subText = `Total: ${prog.total_mb > 0 ? prog.total_mb : '?'} MB`; if(isTurbo) subText += " (Turbo 🚀)";
+                            document.getElementById('modalSubtitle').innerText = subText;
+                            // ETA ফিক্স
+                            if(prog.eta) {
+                                const m = Math.floor(prog.eta/60);
+                                const s = Math.round(prog.eta%60);
+                                document.getElementById('statEta').innerText = `${m}m ${s}s`;
+                            } else {
+                                document.getElementById('statEta').innerText = '--';
+                            }
+                        } else if (prog.status === 'merging') {
+                            document.getElementById('progressFill').style.width = '100%'; document.getElementById('circlePercent').innerText = "100%";
+                            document.getElementById('modalTitle').innerText = "Processing"; document.getElementById('modalSubtitle').innerText = "Merging..."; document.getElementById('statSpeed').innerText = "--";
+                        } else if (prog.status === 'done') {
+                            clearInterval(progressInterval); activeTaskId = "";
+                            document.getElementById('progressFill').style.width = '100%'; document.getElementById('circlePercent').innerText = "100%"; document.getElementById('modalTitle').innerText = "Success";
+                            
+                            downloadedVideos.push(`${currentVideoTitle}_${height === 'audio' ? 'Audio' : height + 'p'}`);
+                            
                             setTimeout(() => {
-                                document.getElementById('progressModal').style.display = 'none'; showToast("Download Complete!");
-                                btnElement.innerHTML = originalText; btnElement.disabled = false; loadHomeFeed(); checkNotifications(); 
-                            }, 1500);
-                        }, 500);
-                    } else if (prog.status === 'cancelled') {
-                        clearInterval(progressInterval); activeTaskId = "";
-                        document.getElementById('progressModal').style.display = 'none'; showToast("Download Cancelled", true);
-                        btnElement.innerHTML = originalText; btnElement.disabled = false; 
-                    } else if (prog.status === 'error') {
-                        clearInterval(progressInterval); activeTaskId = "";
-                        document.getElementById('progressModal').style.display = 'none'; showToast("Error: " + prog.error, true);
-                        btnElement.innerHTML = originalText; btnElement.disabled = false;
+                                window.location.href = `/api/get-file/${data.task_id}`;
+                                setTimeout(() => {
+                                    document.getElementById('progressModal').style.display = 'none'; showToast("Download Complete!");
+                                    btnElement.innerHTML = originalText; btnElement.disabled = false; 
+                                    loadHomeFeed(); checkNotifications(); 
+                                    renderFormats(document.querySelector('.tab.active').innerText.toLowerCase());
+                                }, 1500);
+                            }, 500);
+                        } else if (prog.status === 'cancelled') {
+                            clearInterval(progressInterval); activeTaskId = "";
+                            document.getElementById('progressModal').style.display = 'none'; showToast("Download Cancelled", true);
+                            btnElement.innerHTML = originalText; btnElement.disabled = false; 
+                        } else if (prog.status === 'error') {
+                            clearInterval(progressInterval); activeTaskId = "";
+                            document.getElementById('progressModal').style.display = 'none'; showToast("Error: " + prog.error, true);
+                            btnElement.innerHTML = originalText; btnElement.disabled = false;
+                        }
+                    } catch (err) {
+                        console.log("Progress fetch error", err);
+                    } finally {
+                        isProgressFetching = false;
                     }
-                }, 800);
+                }, 1000); // ৮০০ থেকে ১০০০ মিলি সেকেন্ড করা হলো
             } catch (error) { showToast("Error: " + error.message, true); btnElement.innerHTML = originalText; btnElement.disabled = false; }
         }
     </script>
