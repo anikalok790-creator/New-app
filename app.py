@@ -11,7 +11,8 @@ import time
 import re
 import json
 import urllib.parse
-import shutil
+import urllib.request
+import ssl
 
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})
@@ -20,6 +21,8 @@ limiter = Limiter(get_remote_address, app=app, default_limits=["200 per minute"]
 APP_SECRET_TOKEN = "SnapPro-Secure-X9F2K1-2026"
 DOWNLOAD_DIR = pathlib.Path("downloads")
 DOWNLOAD_DIR.mkdir(exist_ok=True)
+BIN_DIR = pathlib.Path("bin")
+BIN_DIR.mkdir(exist_ok=True)
 HISTORY_FILE = pathlib.Path("history.json")
 
 tasks = {}
@@ -29,6 +32,33 @@ history_lock = threading.Lock()
 AUDIO_EXTS = {'.m4a', '.mp3', '.webm', '.opus', '.ogg', '.aac', '.flac', '.wav'}
 VIDEO_EXTS = {'.mp4', '.mkv', '.webm', '.mov', '.avi'}
 MEDIA_EXTS = AUDIO_EXTS | VIDEO_EXTS
+
+# FFmpeg Auto-Download Function
+def get_ffmpeg_path():
+    ffmpeg_file = BIN_DIR / "ffmpeg"
+    if ffmpeg_file.exists():
+        return str(ffmpeg_file)
+    
+    print("Downloading ffmpeg binary for Android arm64...")
+    url = "https://github.com/hzw1199/Android-FFmpeg-Prebuilt/raw/main/ffmpeg-9.0/bin/ffmpeg"
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, context=ctx) as response, open(ffmpeg_file, 'wb') as out_file:
+            out_file.write(response.read())
+        
+        # Make it executable
+        os.chmod(ffmpeg_file, 0o755)
+        print("FFmpeg downloaded and made executable.")
+        return str(ffmpeg_file)
+    except Exception as e:
+        print(f"Failed to download ffmpeg: {e}")
+        return None
+
+# Pre-download ffmpeg on startup
+FFMPEG_PATH = get_ffmpeg_path()
 
 def verify_token():
     token = request.headers.get('X-App-Token')
@@ -106,23 +136,13 @@ def download_worker(tid, url, height, title, thumb, uploader, views, desc, save_
 
     opts = {'outtmpl': outtmpl, 'quiet': True, 'no_warnings': True, 'progress_hooks': [hook], 'nocheckcertificate': True}
 
-    # --- FFmpeg Integration using ffmpeg-local ---
-    try:
-        from ffmpeg_local import get_ffmpeg_path
-        ffmpeg_path = get_ffmpeg_path()
-        if ffmpeg_path and os.path.exists(ffmpeg_path):
-            opts['ffmpeg_location'] = ffmpeg_path
-            print(f"FFmpeg loaded from: {ffmpeg_path}")
-    except Exception as e:
-        print(f"FFmpeg-local init failed, checking system path: {e}")
-        system_ffmpeg = shutil.which("ffmpeg")
-        if system_ffmpeg:
-            opts['ffmpeg_location'] = system_ffmpeg
+    # Inject FFmpeg
+    if FFMPEG_PATH and os.path.exists(FFMPEG_PATH):
+        opts['ffmpeg_location'] = FFMPEG_PATH
 
     if height == 'audio':
         opts['format'] = 'bestaudio[ext=m4a]/bestaudio'
     else:
-        # 16K Video requires merging best video and best audio
         opts['format'] = f'bestvideo*[height<={height}]+bestaudio/best[height<={height}]/best'
         opts['merge_output_format'] = 'mp4'
 

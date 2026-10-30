@@ -2,4 +2,3 @@ Flask
 flask-cors
 yt-dlp
 Flask-Limiter
-ffmpeg-local
