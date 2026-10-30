@@ -104,14 +104,25 @@ def download_worker(tid, url, height, title, thumb, uploader, views, desc, save_
         elif d['status'] == 'finished':
             tasks[tid].update({'status': 'merging', 'percent': 100})
 
-    ffmpeg = shutil.which("ffmpeg")
     opts = {'outtmpl': outtmpl, 'quiet': True, 'no_warnings': True, 'progress_hooks': [hook], 'nocheckcertificate': True}
-    if ffmpeg: opts['ffmpeg_location'] = ffmpeg
+
+    # --- FFmpeg Integration using ffmpeg-local ---
+    try:
+        from ffmpeg_local import get_ffmpeg_path
+        ffmpeg_path = get_ffmpeg_path()
+        if ffmpeg_path and os.path.exists(ffmpeg_path):
+            opts['ffmpeg_location'] = ffmpeg_path
+            print(f"FFmpeg loaded from: {ffmpeg_path}")
+    except Exception as e:
+        print(f"FFmpeg-local init failed, checking system path: {e}")
+        system_ffmpeg = shutil.which("ffmpeg")
+        if system_ffmpeg:
+            opts['ffmpeg_location'] = system_ffmpeg
 
     if height == 'audio':
-        opts['format'] = 'bestaudio/best'
+        opts['format'] = 'bestaudio[ext=m4a]/bestaudio'
     else:
-        # Robust Format Fallback: If 2160p+audio fails, it will grab the best single file available
+        # 16K Video requires merging best video and best audio
         opts['format'] = f'bestvideo*[height<={height}]+bestaudio/best[height<={height}]/best'
         opts['merge_output_format'] = 'mp4'
 
@@ -210,7 +221,6 @@ def get_file(tid):
     title, res = "SnapPro_Video", "Video"
     for i in download_history:
         if i['task_id'] == tid: title, res = i['title'], i['resolution']; break
-    # FORCES WEBTOAPP NATIVE DOWNLOAD
     return send_file(fpath, as_attachment=True, conditional=True, download_name=f"[{res}] {get_safe_filename(title)}.{ext}")
 
 @app.route('/api/download-history-file/<tid>', methods=['GET'])
