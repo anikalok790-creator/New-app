@@ -1,0 +1,313 @@
+import os
+import yt_dlp
+from flask import Flask, render_template, request, jsonify, send_file, abort
+from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+import pathlib
+import uuid
+import threading
+import time
+import re
+import json
+import urllib.parse
+import urllib.request
+import ssl
+import shutil
+
+app = Flask(__name__)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
+limiter = Limiter(get_remote_address, app=app, default_limits=["200 per minute"], storage_uri="memory://")
+
+APP_SECRET_TOKEN = "SnapPro-Secure-X9F2K1-2026"
+DOWNLOAD_DIR = pathlib.Path("downloads")
+DOWNLOAD_DIR.mkdir(exist_ok=True)
+BIN_DIR = pathlib.Path("bin")
+BIN_DIR.mkdir(exist_ok=True)
+HISTORY_FILE = pathlib.Path("history.json")
+
+tasks = {}
+download_history = []
+history_lock = threading.Lock()
+cancel_flags = {}
+
+AUDIO_EXTS = {'.m4a', '.mp3', '.webm', '.opus', '.ogg', '.aac', '.flac', '.wav'}
+VIDEO_EXTS = {'.mp4', '.mkv', '.webm', '.mov', '.avi'}
+MEDIA_EXTS = AUDIO_EXTS | VIDEO_EXTS
+
+def get_ffmpeg_path():
+    ffmpeg_file = BIN_DIR / "ffmpeg"
+    if ffmpeg_file.exists():
+        return str(ffmpeg_file)
+    print("Downloading ffmpeg binary...")
+    url = "https://github.com/hzw1199/Android-FFmpeg-Prebuilt/raw/main/ffmpeg-9.0/bin/ffmpeg"
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, context=ctx) as response, open(ffmpeg_file, 'wb') as out_file:
+            out_file.write(response.read())
+        os.chmod(ffmpeg_file, 0o755)
+        return str(ffmpeg_file)
+    except Exception as e:
+        print(f"Failed: {e}")
+        return None
+
+FFMPEG_PATH = get_ffmpeg_path()
+
+def verify_token():
+    token = request.headers.get('X-App-Token')
+    if token != APP_SECRET_TOKEN: abort(403)
+
+def save_history_to_file():
+    try:
+        with history_lock:
+            with open(HISTORY_FILE, 'w', encoding='utf-8') as f:
+                json.dump(download_history, f, ensure_ascii=False, indent=4)
+    except: pass
+
+def load_history_from_file():
+    global download_history
+    if HISTORY_FILE.exists():
+        try:
+            with open(HISTORY_FILE, 'r', encoding='utf-8') as f:
+                download_history = json.load(f)
+        except: download_history = []
+
+load_history_from_file()
+
+def get_safe_filename(title):
+    if not title: return "SnapPro_Video"
+    title = re.sub(r'[\r\n\t]+', ' ', title)
+    title = re.sub(r'[\\/*?:"<>|]', '', title)
+    while len(title.encode('utf-8')) > 80: title = title[:-1]
+    return title.strip() or "SnapPro_Video"
+
+def sanitize_basename(name):
+    return os.path.basename(str(name)).strip() if name else ""
+
+@app.route('/')
+def index():
+    return render_template('index.html', token=APP_SECRET_TOKEN)
+
+@app.route('/api/info', methods=['POST'])
+@limiter.limit("20 per minute")
+def get_info():
+    verify_token()
+    data = request.json or {}
+    url = (data.get('url') or '').strip()
+    if not url or not re.match(r'^https?://', url): return jsonify({"error": "Invalid URL"}), 400
+
+    try:
+        with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True, 'nocheckcertificate': True}) as ydl:
+            info = ydl.extract_info(url, download=False)
+            formats = []
+            seen = set()
+            
+            duration = info.get('duration', 0)
+            audio_size = 0
+            
+            for f in info.get('formats', []):
+                height = f.get('height')
+                vcodec = f.get('vcodec')
+                acodec = f.get('acodec')
+                
+                if acodec != 'none' and vcodec == 'none':
+                    fsize = f.get('filesize') or f.get('filesize_approx', 0)
+                    if not fsize:
+                        tbr = f.get('tbr') or f.get('abr')
+                        if tbr and duration:
+                            fsize = int((tbr * 1000 / 8) * duration)
+                    if fsize > audio_size: audio_size = fsize
+                
+                if height and vcodec != 'none':
+                    label = f"{height}p"
+                    if label not in seen:
+                        seen.add(label)
+                        filesize = f.get('filesize') or f.get('filesize_approx', 0)
+                        if not filesize:
+                            tbr = f.get('tbr') or f.get('vbr')
+                            if tbr and duration:
+                                filesize = int((tbr * 1000 / 8) * duration)
+                        formats.append({'resolution': label, 'height': height, 'ext': f.get('ext', 'mp4'), 'filesize': filesize})
+            
+            formats.sort(key=lambda x: x['height'], reverse=True)
+            vc = info.get('view_count', 0)
+            views = f"{vc/1000000:.1f}M views" if vc >= 1000000 else (f"{vc/1000:.1f}K views" if vc >= 1000 else f"{vc} views")
+            
+            uploader_avatar = info.get('uploader_avatar') or info.get('channel_thumbnail') or info.get('thumbnail', '')
+
+            return jsonify({
+                "title": info.get('title', 'Unknown'), "thumbnail": info.get('thumbnail', ''), "duration": info.get('duration_string', ''), 
+                "formats": formats, "audio_size": audio_size, "uploader": info.get('uploader', 'Channel'), 
+                "uploader_avatar": uploader_avatar, "views": views, "description": info.get('description', '')
+            })
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+def download_worker(tid, url, height, title, thumb, uploader, avatar, views, desc, save_thumb, turbo_speed):
+    outtmpl = str(DOWNLOAD_DIR / f"{tid}_%(title).100B.%(ext)s")
+    
+    def hook(d):
+        if cancel_flags.get(tid): raise yt_dlp.utils.DownloadCancelled()
+        if d['status'] == 'downloading':
+            total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
+            dl = d.get('downloaded_bytes', 0)
+            tasks[tid].update({'status': 'downloading', 'percent': (dl/total*100) if total>0 else 0, 'downloaded': dl, 'total': total, 'speed': d.get('speed', 0), 'eta': d.get('eta', 0)})
+        elif d['status'] == 'finished':
+            tasks[tid].update({'status': 'merging', 'percent': 100})
+
+    opts = {
+        'outtmpl': outtmpl, 'quiet': True, 'no_warnings': True, 'progress_hooks': [hook], 'nocheckcertificate': True,
+        'retries': 50, 'fragment_retries': 50, 'socket_timeout': 30, 'abort_on_error': False
+    }
+    
+    if FFMPEG_PATH and os.path.exists(FFMPEG_PATH): opts['ffmpeg_location'] = FFMPEG_PATH
+
+    if turbo_speed:
+        opts['concurrent_fragment_downloads'] = 8
+
+    if height == 'audio':
+        opts['format'] = 'bestaudio[ext=m4a]/bestaudio'
+    else:
+        opts['format'] = f'bestvideo*[height<={height}]+bestaudio/best[height<={height}]/best'
+        opts['merge_output_format'] = 'mp4'
+
+    if save_thumb: opts['writethumbnail'] = True
+
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl: ydl.extract_info(url, download=True)
+        candidates = [f for f in DOWNLOAD_DIR.glob(f"{tid}_*") if f.suffix.lower() in MEDIA_EXTS]
+        candidates.sort(key=lambda p: p.stat().st_size, reverse=True)
+        if not candidates: raise Exception("Download failed")
+
+        filename = str(candidates[0])
+        tasks[tid].update({'status': 'done', 'filename': filename})
+
+        with history_lock:
+            download_history.append({
+                'task_id': tid, 'title': title, 'filename': os.path.basename(filename), 
+                'thumbnail': thumb, 'uploader': uploader, 'uploader_avatar': avatar, 
+                'resolution': 'Audio' if height == 'audio' else f"{height}p", 
+                'time': time.strftime("%Y-%m-%d %H:%M"), 'views': views, 'description': desc, 'original_url': url
+            })
+        save_history_to_file()
+
+    except Exception as e:
+        if cancel_flags.get(tid) or "DownloadCancelled" in str(e):
+            tasks[tid].update({'status': 'cancelled'})
+            for f in DOWNLOAD_DIR.glob(f"{tid}_*"):
+                try: os.remove(f)
+                except: pass
+        else:
+            tasks[tid].update({'status': 'error', 'error': str(e)})
+    finally:
+        if tid in cancel_flags: del cancel_flags[tid]
+
+@app.route('/api/cancel-download/<tid>', methods=['POST'])
+def cancel_download(tid):
+    verify_token()
+    if tid in tasks and tasks[tid]['status'] in ['downloading', 'starting', 'merging']:
+        cancel_flags[tid] = True
+    return jsonify({"status": "cancelling"})
+
+@app.route('/api/start-download', methods=['POST'])
+@limiter.limit("10 per minute")
+def start_download():
+    verify_token()
+    d = request.json or {}
+    url = (d.get('url') or '').strip()
+    if not url: return jsonify({"error": "URL Required"}), 400
+    
+    tid = str(uuid.uuid4())[:8]
+    tasks[tid] = {'status': 'starting', 'percent': 0, 'filename': ''}
+    threading.Thread(target=download_worker, args=(tid, url, d.get('height'), d.get('title', 'Video'), d.get('thumb', ''), d.get('uploader', 'Channel'), d.get('avatar', ''), d.get('views', '0'), d.get('description', ''), d.get('save_thumb', False), d.get('turbo_speed', False)), daemon=True).start()
+    return jsonify({"task_id": tid})
+
+@app.route('/api/progress/<tid>', methods=['GET'])
+def get_progress(tid):
+    verify_token()
+    t = tasks.get(tid, {'status': 'error', 'error': 'Not found', 'percent': 0})
+    return jsonify({'status': t.get('status'), 'percent': round(t.get('percent', 0), 2), 'speed': round((t.get('speed') or 0)/(1024*1024), 2), 'downloaded_mb': round((t.get('downloaded') or 0)/(1024*1024), 2), 'total_mb': round((t.get('total') or 0)/(1024*1024), 2), 'eta': t.get('eta', 0), 'error': t.get('error', '')})
+
+@app.route('/api/local-videos', methods=['GET'])
+def get_local_videos():
+    verify_token()
+    vids = []
+    hm = {i['filename']: i for i in download_history}
+    files = [f for f in DOWNLOAD_DIR.iterdir() if f.is_file() and f.suffix.lower() in MEDIA_EXTS and f.stat().st_size > 1000]
+    for f in sorted(files, key=lambda p: p.stat().st_mtime, reverse=True):
+        m = hm.get(f.name, {})
+        parts = f.stem.split('_', 1)
+        emb_id = parts[0] if len(parts) > 1 and len(parts[0]) == 8 else ''
+        fallback_title = parts[1] if len(parts) > 1 else f.stem
+        is_audio = f.suffix.lower() in AUDIO_EXTS and m.get('resolution') == 'Audio'
+        orig_url = m.get('original_url', '')
+        vids.append({
+            'task_id': m.get('task_id', emb_id), 'title': m.get('title') or fallback_title, 'filename': f.name, 
+            'thumbnail': m.get('thumbnail', ''), 'uploader': m.get('uploader', 'Unknown'), 'uploader_avatar': m.get('uploader_avatar', ''), 
+            'views': m.get('views', ''), 'resolution': m.get('resolution', 'Audio' if is_audio else 'Local'), 
+            'description': m.get('description', ''), 'time': m.get('time') or time.strftime('%Y-%m-%d %H:%M', time.localtime(f.stat().st_mtime)), 
+            'url': f"/api/stream/{urllib.parse.quote(f.name)}", 'original_url': orig_url, 'timestamp': f.stat().st_mtime
+        })
+    return jsonify(vids)
+
+@app.route('/api/history', methods=['GET'])
+def get_history():
+    verify_token()
+    return jsonify(download_history[::-1])
+
+@app.route('/api/clear-history', methods=['POST'])
+def clear_history():
+    verify_token()
+    with history_lock: download_history.clear()
+    save_history_to_file()
+    return jsonify({"status": "success"})
+
+@app.route('/api/clear-cache', methods=['POST'])
+def clear_cache():
+    verify_token()
+    try:
+        for f in DOWNLOAD_DIR.iterdir():
+            if f.is_file():
+                f.unlink()
+        with history_lock: download_history.clear()
+        save_history_to_file()
+        return jsonify({"status": "success"})
+    except Exception as e: return jsonify({"error": str(e)}), 500
+
+@app.route('/api/delete-video', methods=['POST'])
+def delete_video():
+    verify_token()
+    fname = sanitize_basename((request.json or {}).get('filename'))
+    if not fname: return jsonify({"error": "Filename required"}), 400
+    fpath = DOWNLOAD_DIR / fname
+    if fpath.exists():
+        try:
+            os.remove(fpath)
+            global download_history
+            with history_lock: download_history = [i for i in download_history if i['filename'] != fname]
+            save_history_to_file()
+            return jsonify({"status": "success"})
+        except Exception as e: return jsonify({"error": str(e)}), 500
+    return jsonify({"error": "File not found"}), 404
+
+@app.route('/api/stream/<path:filename>', methods=['GET'])
+def stream_video(filename):
+    fpath = DOWNLOAD_DIR / sanitize_basename(filename)
+    if fpath.exists(): return send_file(fpath, conditional=True)
+    return jsonify({"error": "File not found"}), 404
+
+@app.route('/api/get-file/<tid>', methods=['GET'])
+def get_file(tid):
+    if tid not in tasks or tasks[tid]['status'] != 'done': return jsonify({"error": "Not ready"}), 400
+    fpath = pathlib.Path(tasks[tid]['filename']).resolve()
+    if not str(fpath).startswith(str(DOWNLOAD_DIR.resolve())) or not fpath.exists(): return jsonify({"error": "Invalid path"}), 400
+    ext = fpath.suffix.lstrip('.')
+    title, res = "SnapPro_Video", "Video"
+    for i in download_history:
+        if i['task_id'] == tid: title, res = i['title'], i['resolution']; break
+    return send_file(fpath, as_attachment=True, conditional=True, download_name=f"[{res}] {get_safe_filename(title)}.{ext}")
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False, threaded=True)
